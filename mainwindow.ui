@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>479</width>
+    <height>371</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="0">
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="tabLauncher">
+       <attribute name="icon">
+        <iconset resource="vostok.qrc">
+         <normaloff>:/png/16x16/Star.png</normaloff>:/png/16x16/Star.png</iconset>
+       </attribute>
+       <attribute name="title">
+        <string>Launcher</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <item row="0" column="0">
+         <widget class="QListView" name="lstLauncher"/>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tabTODO">
+       <attribute name="icon">
+        <iconset resource="vostok.qrc">
+         <normaloff>:/png/16x16/Exclamation.png</normaloff>:/png/16x16/Exclamation.png</iconset>
+       </attribute>
+       <attribute name="title">
+        <string>TODO</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_3">
+        <item row="0" column="0">
+         <layout class="QGridLayout" name="gridLayout_20">
+          <item row="0" column="0">
+           <layout class="QVBoxLayout" name="verticalLayout_5">
+            <item>
+             <widget class="QPushButton" name="btnAddTODO">
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="vostok.qrc">
+                <normaloff>:/png/16x16/Plus.png</normaloff>:/png/16x16/Plus.png</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnDelTODO">
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="vostok.qrc">
+                <normaloff>:/png/16x16/Minus.png</normaloff>:/png/16x16/Minus.png</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnUpTODO">
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="vostok.qrc">
+                <normaloff>:/png/16x16/Arrow - Up.png</normaloff>:/png/16x16/Arrow - Up.png</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnDownTODO">
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="vostok.qrc">
+                <normaloff>:/png/16x16/Arrow - Down.png</normaloff>:/png/16x16/Arrow - Down.png</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="verticalSpacer_3">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>40</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="0" column="1">
+           <widget class="QSplitter" name="splitter">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <widget class="QTreeWidget" name="tvwTODO">
+             <column>
+              <property name="text">
+               <string notr="true">1</string>
+              </property>
+             </column>
+            </widget>
+            <widget class="QPlainTextEdit" name="txtNote"/>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tabNotepad">
+       <attribute name="icon">
+        <iconset resource="vostok.qrc">
+         <normaloff>:/png/16x16/Document Text.png</normaloff>:/png/16x16/Document Text.png</iconset>
+       </attribute>
+       <attribute name="title">
+        <string>Notepad</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_4">
+        <item row="0" column="0">
+         <widget class="QTextEdit" name="txtNotepad"/>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tabFocus">
+       <attribute name="icon">
+        <iconset resource="vostok.qrc">
+         <normaloff>:/png/16x16/Target.png</normaloff>:/png/16x16/Target.png</iconset>
+       </attribute>
+       <attribute name="title">
+        <string>Focus</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_5">
+        <item row="0" column="0">
+         <widget class="QSplitter" name="tabVideoSplitter">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <widget class="QTextEdit" name="txtFocus"/>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tabSettings">
+       <attribute name="icon">
+        <iconset resource="vostok.qrc">
+         <normaloff>:/png/16x16/Gear.png</normaloff>:/png/16x16/Gear.png</iconset>
+       </attribute>
+       <attribute name="title">
+        <string>Settings</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>479</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources>
+  <include location="vostok.qrc"/>
+ </resources>
+ <connections/>
+</ui>

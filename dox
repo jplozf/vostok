@@ -1,0 +1,11 @@
+Qt5Core.dll
+Qt5Gui.dll
+Qt5Multimedia.dll
+Qt5MultimediaWidgets.dll
+Qt5Widgets.dll
+libgcc_s_seh-1.dll
+Qt5Network.dll
+libwinpthread-1.dll
+
+
+C:\Qt\5.15.2\mingw81_64\bin
