@@ -173,5 +173,9 @@
         <file>16x16/Write.png</file>
         <file>16x16/Zoom In.png</file>
         <file>16x16/Zoom Out.png</file>
+        <file>png/vostok_16.png</file>
+        <file>png/vostok_24.png</file>
+        <file>png/vostok_32.png</file>
+        <file>png/vostok_48.png</file>
     </qresource>
 </RCC>

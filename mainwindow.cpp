@@ -6,7 +6,6 @@
 #include <QDebug>
 #include <string>
 
-
 //******************************************************************************
 // LauncherWindow()
 //******************************************************************************
@@ -131,7 +130,7 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     windowBarLayout->addWidget(btnLock);
     windowBarLayout->addWidget(btnOff);
 
-    if (appSettings->getBool("TITLE_BAR_POSITION_TOP")) {
+    if (appSettings->get("TITLE_BAR_POSITION_TOP").toBool()) {
         verticalLayout->addWidget(mTitlebarWidget);
         verticalLayout->addWidget(mMainWindow);
     }
@@ -153,7 +152,7 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     QTimer *t = new QTimer(this);
     t->setInterval(1000);
     connect(t, &QTimer::timeout, [&]() {
-        QString time1 = QDateTime::currentDateTime().toString(appSettings->getQString("TITLE_BAR_TIME_FORMAT"));
+        QString time1 = QDateTime::currentDateTime().toString(appSettings->get("TITLE_BAR_TIME_FORMAT").toString());
         lblTitle->setText(time1);
     } );
     t->start();
@@ -192,14 +191,14 @@ void LauncherWindow::closeEvent(QCloseEvent *event) {
 // saveSettings()
 //******************************************************************************
 void LauncherWindow::saveSettings() {
-    QSettings settings(appConstants->getQString("ORGANIZATION_NAME"), appConstants->getQString("APPLICATION_NAME"));
-    settings.setValue("geometry", saveGeometry());
-    settings.setValue("windowState", saveState());
-    settings.setValue("splitFocus", mMainWindow->ui->tabVideoSplitter->saveState());
-    settings.setValue("currentTab", mMainWindow->ui->tabWidget->currentIndex());
-    settings.setValue("currentMedia", mMainWindow->movieWidget->currentMedia);
-    settings.setValue("currentSession", mMainWindow->movieWidget->file_1_url_2);
-    settings.setValue("currentPosition", mMainWindow->movieWidget->mediaPlayer->position());
+    QSettings registry(appConstants->getQString("ORGANIZATION_NAME"), appConstants->getQString("APPLICATION_NAME"));
+    registry.setValue("geometry", saveGeometry());
+    registry.setValue("windowState", saveState());
+    registry.setValue("splitFocus", mMainWindow->ui->tabVideoSplitter->saveState());
+    registry.setValue("currentTab", mMainWindow->ui->tabWidget->currentIndex());
+    registry.setValue("currentMedia", mMainWindow->movieWidget->currentMedia);
+    registry.setValue("currentSession", mMainWindow->movieWidget->file_1_url_2);
+    registry.setValue("currentPosition", mMainWindow->movieWidget->mediaPlayer->position());
 
     //**************************************************************************
     // Notepad saving
@@ -216,15 +215,21 @@ void LauncherWindow::saveSettings() {
     fFocus.open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text);
     fFocus.write(mMainWindow->ui->txtFocus->toPlainText().toUtf8());
     fFocus.close();
+
+    //**************************************************************************
+    // Settings saving
+    //**************************************************************************
+    Settings mySettings;
+    mySettings.write();
 }
 
 //******************************************************************************
 // readSettings()
 //******************************************************************************
 void LauncherWindow::readSettings() {
-    QSettings settings(appConstants->getQString("ORGANIZATION_NAME"), appConstants->getQString("APPLICATION_NAME"));
+    QSettings registry(appConstants->getQString("ORGANIZATION_NAME"), appConstants->getQString("APPLICATION_NAME"));
 
-    const QByteArray geometry = settings.value("geometry", QByteArray()).toByteArray();
+    const QByteArray geometry = registry.value("geometry", QByteArray()).toByteArray();
     if (geometry.isEmpty()) {
         const QRect availableGeometry = screen()->availableGeometry();
         resize(availableGeometry.width() / 3, availableGeometry.height() / 2);
@@ -233,25 +238,25 @@ void LauncherWindow::readSettings() {
         restoreGeometry(geometry);
     }
 
-    const QByteArray windowState = settings.value("windowState", QByteArray()).toByteArray();
+    const QByteArray windowState = registry.value("windowState", QByteArray()).toByteArray();
     if (!windowState.isEmpty()) {
-        restoreState(settings.value("windowState").toByteArray());
+        restoreState(registry.value("windowState").toByteArray());
     }
 
-    const QByteArray splitFocus = settings.value("splitFocus", QByteArray()).toByteArray();
+    const QByteArray splitFocus = registry.value("splitFocus", QByteArray()).toByteArray();
     if (!splitFocus.isEmpty()) {
-        mMainWindow->ui->tabVideoSplitter->restoreState(settings.value("splitFocus").toByteArray());
+        mMainWindow->ui->tabVideoSplitter->restoreState(registry.value("splitFocus").toByteArray());
     }
 
-    const int currentTab = settings.value("currentTab").toInt();
+    const int currentTab = registry.value("currentTab").toInt();
     if (currentTab >= 0) {
         mMainWindow->ui->tabWidget->setCurrentIndex(currentTab);
         currentTabIndex = currentTab;
     }
 
-    const int currentSession = settings.value("currentSession").toInt();
-    const QString currentMedia = settings.value("currentMedia").toString();
-    const qint64 currentPosition = settings.value("currentPosition").toUInt();
+    const int currentSession = registry.value("currentSession").toInt();
+    const QString currentMedia = registry.value("currentMedia").toString();
+    const qint64 currentPosition = registry.value("currentPosition").toUInt();
     bool currentRun = false;
     if (currentMedia != "" && currentSession != 0) {
         if (currentTab == 3) {
@@ -370,7 +375,24 @@ void LauncherWindow::slotMaximized() {
 //******************************************************************************
 void LauncherWindow::slotEnter() {
     QString cmd = txtCommand->text();
-    lblTitle->setText(QString("Yo %1").arg(cmd));
+    Interpreter *inter = new Interpreter(cmd);
+    displayOSD(inter->xeq());
+    QTimer::singleShot(0, txtCommand, SLOT(selectAll()));
+    if (inter->getRC()== Interpreter::RC_EXIT){
+        close();
+    }
+}
+
+//******************************************************************************
+// displayOSD()
+//******************************************************************************
+void LauncherWindow::displayOSD(QString out) {
+    OSDDialog *osd = new OSDDialog(this, &out);
+    osd->setModal(false);
+    osd->move(0,0);
+    txtCommand->setFocus();
+    osd->show();
+    txtCommand->setFocus();
 }
 
 //******************************************************************************
@@ -453,7 +475,7 @@ void LauncherWindow::displaySettings() {
 // showMessage()
 //******************************************************************************
 void LauncherWindow::showMessage(QString msg) {
-    mMainWindow->ui->statusbar->showMessage(msg, appSettings->getInt("MESSAGE_TIMEOUT"));
+    mMainWindow->ui->statusbar->showMessage(msg, appSettings->get("MESSAGE_TIMEOUT").toInt());
 }
 
 //******************************************************************************
@@ -463,10 +485,17 @@ void LauncherWindow::initLauncher() {
     //**************************************************************************
     // Set FileSystem Model for Launcher
     //**************************************************************************
-    listModel = new QFileSystemModel(this);
+    listModel = new MyFileSystemModel(this, appSettings);
     listModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
     mMainWindow->ui->lstLauncher->setModel(listModel);
     mMainWindow->ui->lstLauncher->setRootIndex(listModel->setRootPath(launcherDir));
+    mMainWindow->ui->lstLauncher->setDragEnabled(true);
+    int viewMode = appSettings->get("LAUNCHER_VIEW").toInt();
+    if (viewMode == Settings::LAUNCHER_VIEW_ICON) {
+        mMainWindow->ui->lstLauncher->setViewMode(QListView::IconMode);
+    } else {
+        mMainWindow->ui->lstLauncher->setViewMode(QListView::ListMode);
+    }
 
     //**************************************************************************
     // Bind Context Menus for Launcher
@@ -521,17 +550,52 @@ void LauncherWindow::onContextMenuLauncher(QPoint position) {
         //**********************************************************************
         QAction *action = mnuList->exec(mMainWindow->ui->lstLauncher->viewport()->mapToGlobal(position));
         if (action == mnaListRename) {
-            // TODO : Rename
+            // Action : RENAME
+            bool ok;
+            QModelIndex index = mMainWindow->ui->lstLauncher->currentIndex();
+            QString thisFileName = listModel->fileInfo(index).baseName();
+            QString newName = QInputDialog::getText(this, tr("Rename"),
+                                                 tr("New name:"), QLineEdit::Normal,
+                                                 thisFileName, &ok);
+            if (ok && !newName.isEmpty()) {
+                QFileInfo fi(thisFileName);
+                if (fi.suffix() == appConstants->getQString("LAUNCHER_SUFFIX")) {
+                    showMessage("Renaming " + thisFileName);
+                    Shortcut *sh = new Shortcut(thisFileName);
+                }
+                showMessage(newName);
+            }
         } else {
+            // Action : DELETE
             if (action == mnaListDelete) {
-                // TODO : Delete
+                QModelIndex index = mMainWindow->ui->lstLauncher->currentIndex();
+                QString thisFileName = listModel->fileInfo(index).absoluteFilePath();
+                QFileInfo fi(thisFileName);
+                if (fi.isDir()) {
+                    QDir dir(thisFileName);
+                    dir.removeRecursively();
+                } else {
+                    QFile file(thisFileName);
+                    file.remove();
+                }
+                showMessage("Removing " + thisFileName);
             } else {
+                // Action : EDIT
                 if (action == mnaListEdit) {
-                    // TODO : Edit
+                    QModelIndex index = mMainWindow->ui->lstLauncher->currentIndex();
+                    QString thisFileName = listModel->fileInfo(index).absoluteFilePath();
+                    QFileInfo fi(thisFileName);
+                    if (fi.suffix() == appConstants->getQString("LAUNCHER_SUFFIX")) {
+                        showMessage("Editing " + thisFileName);
+                        Shortcut *sh = new Shortcut(thisFileName);
+                        editShortcut(sh);
+                    } else {
+                        showMessage("Can't edit " + thisFileName);
+                    }
                 }
             }
         }
-        //Select clearly
+        // Clear the selection
         mMainWindow->ui->lstLauncher->selectionModel()->clear();
     } else {
         //**********************************************************************
@@ -559,6 +623,31 @@ void LauncherWindow::onContextMenuLauncher(QPoint position) {
 }
 
 //******************************************************************************
+// editShortcut()
+//******************************************************************************
+void LauncherWindow::editShortcut(Shortcut *sh) {
+    EditShortcutDialog dlg = EditShortcutDialog(this, sh);
+    int rc = dlg.exec();
+    if (rc == QDialog::Accepted) {
+        updateShortcut(&dlg);
+    }
+}
+
+//******************************************************************************
+// updateShortcut()
+//******************************************************************************
+void LauncherWindow::updateShortcut(EditShortcutDialog *dlg) {
+    QString shortcutName = dlg->getShortcutName();
+    QString shortcutCommand = dlg->getShortcutCommand();
+    QString shortcutIcon = dlg->getShortcutIcon();
+    QString shortcutComment = dlg->getShortcutComment();
+    QString shortcutType = dlg->getShortcutType();
+
+    Shortcut *sh = new Shortcut(shortcutName, shortcutIcon, shortcutCommand, shortcutComment, shortcutType);
+    sh->write(currentLauncherDir);
+}
+
+//******************************************************************************
 // newShortcut()
 //******************************************************************************
 void LauncherWindow::newShortcut() {
@@ -575,15 +664,38 @@ void LauncherWindow::newShortcut() {
 void LauncherWindow::createShortcut(NewShortcutDialog *dlg) {
     QString shortcutName = dlg->getShortcutName();
     QString shortcutCommand = dlg->getShortcutCommand();
-    QString shortcutArgs = dlg->getShortcutArgs();
+    QString shortcutIcon = dlg->getShortcutIcon();
+    QString shortcutComment = dlg->getShortcutComment();
+    QString shortcutType = dlg->getShortcutType();
+
+    Shortcut *sh = new Shortcut(shortcutName, shortcutIcon, shortcutCommand, shortcutComment, shortcutType);
+    sh->write(currentLauncherDir);
+
+/*
 #ifdef Q_OS_LINUX
     // TODO : Create Linux Shortcut
-    QString shortcutFile =  QDir(currentLauncherDir).filePath(shortcutName);
+    QString shortcutFileName =  QDir(currentLauncherDir).filePath(shortcutName);
+    QFile shortcutFile(shortcutFileName);
+    if (shortcutFile.open(QIODevice::WriteOnly)) {
+        QTextStream stream(&shortcutFile);
+        stream << "#!/bin/bash" << Qt::endl;
+        stream << "#" << Qt::endl;
+        stream << "# " << appConstants->getQString("LAUNCHER_COPYRIGHT") << Qt::endl;
+        stream << "#" << Qt::endl;
+        stream << "\"" << shortcutCommand << "\" " << shortcutArgs << Qt::endl;
+        stream << "if [ $? -ne 0 ]" << Qt::endl;
+        stream << "then" << Qt::endl;
+        stream << "    xdg-open \"" << shortcutCommand << "\" " << shortcutArgs << Qt::endl;
+        stream << "fi" << Qt::endl;
+        shortcutFile.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner|QFile::ReadGroup|QFile::ExeGroup|QFile::ReadOther|QFile::ExeOther);
+        shortcutFile.close();
+    }
 
 #endif
 #ifdef Q_OS_WIN32
     // TODO : Create Windows Shortcut
 #endif
+*/
 }
 
 //******************************************************************************
@@ -607,13 +719,30 @@ void LauncherWindow::newFolder() {
 void LauncherWindow::onLaunchItemClicked(QModelIndex index)
 {
     currentLauncherDir = listModel->fileInfo(index).absoluteFilePath();
-    if (currentLauncherDir == launcherDir) {
-        listModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
-    } else {
-        listModel->setFilter(QDir::AllEntries | QDir::NoDot);
+    if (listModel->fileInfo(index).isDir()) {
+        showMessage(currentLauncherDir);
+        if (currentLauncherDir == launcherDir) {
+            listModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
+        } else {
+            listModel->setFilter(QDir::AllEntries | QDir::NoDot);
+        }
+    } else {        
+        QFileInfo fi(currentLauncherDir);
+        if (fi.suffix() == appConstants->getQString("LAUNCHER_SUFFIX")) {
+            Shortcut *sh = new Shortcut(currentLauncherDir);
+            showMessage("Running " + sh->exec);
+            sh->launch();
+        } else {
+#ifdef Q_OS_LINUX
+            showMessage("Opening " + currentLauncherDir);
+            QProcess::startDetached("xdg-open", QStringList(currentLauncherDir));
+#endif
+#ifdef Q_OS_WIN32
+            // TODO : start
+#endif
+        }
     }
     mMainWindow->ui->lstLauncher->setRootIndex(listModel->setRootPath(currentLauncherDir));
-    showMessage(currentLauncherDir);
 }
 
 //******************************************************************************

@@ -5,8 +5,12 @@
 #include <QtWidgets>
 #include "moviewidget.h"
 #include "settings.h"
+#include "settings.h"
 #include "constants.h"
 #include "dialogs.h"
+#include "myfilesystemmodel.h"
+#include "shortcuts.h"
+#include "interpreter.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -25,6 +29,7 @@ public:
     Ui::MainWindow *ui;
     MovieWidget *movieWidget;
 };
+
 
 //******************************************************************************
 // Class LauncherWindow
@@ -66,6 +71,7 @@ private slots:
     void onTabChanged(int);
     void onContextMenuLauncher(QPoint);
     void onLaunchItemClicked(QModelIndex);
+    void displayOSD(QString out);
 
 private:
     MainWindow *mMainWindow;
@@ -100,8 +106,10 @@ private:
     QAction *mnaListEdit;
     void newShortcut();
     void newFolder();
-    QFileSystemModel *listModel;
+    MyFileSystemModel *listModel;
     void createShortcut(NewShortcutDialog *);
+    void editShortcut(Shortcut *);
+    void updateShortcut(EditShortcutDialog *);
 };
 
 #endif // MAINWINDOW_H

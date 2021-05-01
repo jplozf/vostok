@@ -1,4 +1,4 @@
-QT       += core gui multimediawidgets
+QT       += core gui multimediawidgets widgets
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -11,22 +11,29 @@ CONFIG += c++17
 SOURCES += \
     constants.cpp \
     dialogs.cpp \
+    interpreter.cpp \
     main.cpp \
     mainwindow.cpp \
     moviewidget.cpp \
+    myfilesystemmodel.cpp \
     runguard.cpp \
-    settings.cpp
+    settings.cpp \
+    shortcuts.cpp
 
 HEADERS += \
     constants.h \
     dialogs.h \
+    interpreter.h \
     mainwindow.h \
     moviewidget.h \
+    myfilesystemmodel.h \
     runguard.h \
-    settings.h
+    settings.h \
+    shortcuts.h
 
 FORMS += \
-    mainwindow.ui
+    mainwindow.ui \
+    newshortcut.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

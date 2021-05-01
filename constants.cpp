@@ -17,10 +17,12 @@ Constants::Constants()
     constants["ORGANIZATION_DOMAIN"] = std::string("www.ozf.fr/#vostok");
     constants["APPLICATION_NAME"]    = std::string("Vostok");
 
-    constants["APP_FOLDER"]   = std::string(".vostok");
-    constants["FOCUS_FILE"]   = std::string("focus.txt");
-    constants["NOTEPAD_FILE"] = std::string("notepad.txt");
-    constants["LAUNCHER_FOLDER"] = std::string("launcher");
+    constants["APP_FOLDER"]          = std::string(".vostok");
+    constants["FOCUS_FILE"]          = std::string("focus.txt");
+    constants["NOTEPAD_FILE"]        = std::string("notepad.txt");
+    constants["SETTINGS_FILE"]       = std::string("settings.cfg");
+    constants["LAUNCHER_FOLDER"]     = std::string("launcher");
+    constants["LAUNCHER_SUFFIX"]     = std::string("vostok");
 }
 
 //******************************************************************************
