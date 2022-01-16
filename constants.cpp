@@ -18,6 +18,7 @@ Constants::Constants()
     constants["APPLICATION_NAME"]    = std::string("Vostok");
 
     constants["APP_FOLDER"]          = std::string(".vostok");
+    constants["DB_FILE"]             = std::string("vostok.db");
     constants["FOCUS_FILE"]          = std::string("focus.txt");
     constants["NOTEPAD_FILE"]        = std::string("notepad.txt");
     constants["SETTINGS_FILE"]       = std::string("settings.cfg");

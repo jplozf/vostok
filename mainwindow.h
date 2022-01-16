@@ -1,16 +1,29 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QGuiApplication>
 #include <QMainWindow>
 #include <QtWidgets>
+#include <QVBoxLayout>
+#include <QSize>
 #include "moviewidget.h"
-#include "settings.h"
 #include "settings.h"
 #include "constants.h"
 #include "dialogs.h"
 #include "myfilesystemmodel.h"
 #include "shortcuts.h"
-#include "interpreter.h"
+#include "rpn.h"
+#include "ui_mainwindow.h"
+#include "moviewidget.h"
+#include "alarms.h"
+#include <QDebug>
+#include <string>
+
+#ifdef Q_OS_LINUX
+#include <QtX11Extras/QX11Info>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -30,7 +43,6 @@ public:
     MovieWidget *movieWidget;
 };
 
-
 //******************************************************************************
 // Class LauncherWindow
 //******************************************************************************
@@ -43,19 +55,22 @@ public:
     void closeEvent(QCloseEvent *);
     void saveSettings();
     void readSettings();
-    void showMessage(QString);
+    void showMessage(QString, bool timed = true);
     int currentTabIndex = 0;
     QString appDir;
     QString launcherDir;
     QString currentLauncherDir;
     Settings *appSettings;
     Constants *appConstants;
+    RPN *rpn;
+    Alarms *alarms;
 
 protected:
     void mouseMoveEvent(QMouseEvent* event);
     void mousePressEvent(QMouseEvent* event);
     void mouseReleaseEvent(QMouseEvent* event);
     void mouseDoubleClickEvent(QMouseEvent *event);
+    bool eventFilter(QObject* obj, QEvent *event);
 
 private slots:
     void slotMinimized();
@@ -64,14 +79,22 @@ private slots:
     void slotClosed();
     void slotClock();
     void slotPin();
+    void slotPack();
     void slotSettings();
     void slotOff();
     void slotLock();
     void slotEnter();
+    void slotClearConsole();
+    void slotOpenFile();
+    void slotCloseFile();
     void onTabChanged(int);
     void onContextMenuLauncher(QPoint);
     void onLaunchItemClicked(QModelIndex);
-    void displayOSD(QString out);
+    void alarmCheck();
+    QScreen *getActiveScreen(QWidget* pWidget) const;
+
+protected slots:
+    void readLog();
 
 private:
     MainWindow *mMainWindow;
@@ -85,6 +108,7 @@ private:
     QPushButton *btnClose;
     QPushButton *btnClock;
     QPushButton *btnPin;
+    QPushButton *btnPack;
     QPushButton *btnSettings;
     QPushButton *btnLock;
     QPushButton *btnOff;
@@ -110,6 +134,17 @@ private:
     void createShortcut(NewShortcutDialog *);
     void editShortcut(Shortcut *);
     void updateShortcut(EditShortcutDialog *);
+    void displayOSD(QString out);
+    void displayOutput(QString cmd, QString out);
+    void shutdownComputer(int timeout, bool reboot);
+    void runCommand(QString dir, QString cmd, QTextEdit *view);
+    QTimer timerLog;
+    QFile logFile;
+    QTextStream logStream;
+    bool logMe;
+    QProcess *pCmd;
+
+
 };
 
 #endif // MAINWINDOW_H

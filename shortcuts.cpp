@@ -18,7 +18,7 @@ Shortcut::Shortcut(QString _name, QString _icon, QString _exec, QString _comment
 //******************************************************************************
 Shortcut::Shortcut(QString filename) {
     QSettings shortcutFile(filename, QSettings::IniFormat);
-    icon = shortcutFile.value("Icon", ":/png/png/vostok_16").toString();
+    icon = shortcutFile.value("Icon", ":/png/png/vostok_48").toString();
     exec = shortcutFile.value("Exec").toString();
     name = shortcutFile.value("Name").toString();
     comment = shortcutFile.value("Comment").toString();
@@ -64,10 +64,6 @@ void Shortcut::setType(QString _type) {
 // launch()
 //******************************************************************************
 void Shortcut::launch() {
-    // TODO : Check the type of running
-    // => Application
-    // => Application in terminal
-    // => File or URL
     if (this->type == "Application") {
         QString file(this->exec);
         QProcess::startDetached(file);

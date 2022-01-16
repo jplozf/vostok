@@ -1,17 +1,13 @@
 #include "mainwindow.h"
-#include "ui_mainwindow.h"
-#include "moviewidget.h"
-#include "settings.h"
-#include "constants.h"
-#include <QDebug>
-#include <string>
 
 //******************************************************************************
 // LauncherWindow()
 //******************************************************************************
 LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::CustomizeWindowHint ) {
     appSettings = new Settings();
-    appConstants = new Constants();
+    appConstants = new Constants();    
+    rpn = new RPN();      
+    alarms = new Alarms();
 
     //****************************************************************************
     // Create application folder if not exists
@@ -32,12 +28,12 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
 
     setObjectName("borderlessMainWindow");
     setWindowFlags(Qt::FramelessWindowHint| Qt::WindowSystemMenuHint | Qt::WindowStaysOnTopHint | Qt::Dialog | Qt::Tool);
+    // setWindowFlags(Qt::FramelessWindowHint| Qt::WindowSystemMenuHint | Qt::WindowStaysOnTopHint);
     // to fix taskbar minimize feature
     setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setAttribute(Qt::WA_QuitOnClose, true);
     setAttribute(Qt::WA_DeleteOnClose, true);
     setStyleSheet("#borderlessMainWindow{border:1px solid palette(highlight);}");
-
 
     mMainWindow = new MainWindow(this);
     setWindowTitle(mMainWindow->windowTitle());
@@ -81,11 +77,11 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     btnClock->setIcon(QIcon(":/png/16x16/Clock.png"));
     connect(btnClock, SIGNAL(clicked()), this, SLOT(slotClock()));
 
-    btnPin = new QPushButton(mTitlebarWidget);
-    btnPin->setObjectName("pinButton");
-    btnPin->setFlat(true);
-    btnPin->setIcon(QIcon(":/png/16x16/Attach.png"));
-    connect(btnPin, SIGNAL(clicked()), this, SLOT(slotPin()));
+    btnPack = new QPushButton(mTitlebarWidget);
+    btnPack->setObjectName("packButton");
+    btnPack->setFlat(true);
+    btnPack->setIcon(QIcon(":/png/16x16/Attach.png"));
+    connect(btnPack, SIGNAL(clicked()), this, SLOT(slotPack()));
 
     btnSettings = new QPushButton(mTitlebarWidget);
     btnSettings->setObjectName("settingsButton");
@@ -109,11 +105,21 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     lblTitle->setObjectName("windowTitle");
     lblTitle->setText("Hello");
 
+    btnPin = new QPushButton(mTitlebarWidget);
+    btnPin->setObjectName("pinButton");
+    btnPin->setFlat(true);
+    btnPin->setIcon(QIcon(":/png/16x16/Player Play.png"));
+    connect(btnPin, SIGNAL(clicked()), this, SLOT(slotPin()));
+
+
     txtCommand = new QLineEdit(mTitlebarWidget);
     txtCommand->setObjectName("commandLine");
     txtCommand->setText("");
     connect(txtCommand, SIGNAL(returnPressed()), this, SLOT(slotEnter()));
+    txtCommand->installEventFilter(this);
 
+    // windowBarLayout->addWidget(lblPrompt);
+    windowBarLayout->addWidget(btnPin);
     windowBarLayout->addWidget(txtCommand);
     windowBarLayout->addWidget(lblTitle);
 
@@ -125,8 +131,8 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     windowBarLayout->addWidget(btnClose);
     */
     windowBarLayout->addWidget(btnClock);
-    windowBarLayout->addWidget(btnPin);
-    windowBarLayout->addWidget(btnSettings);
+    windowBarLayout->addWidget(btnPack);
+    // windowBarLayout->addWidget(btnSettings);
     windowBarLayout->addWidget(btnLock);
     windowBarLayout->addWidget(btnOff);
 
@@ -145,23 +151,99 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     centralWidget->setLayout(verticalLayout);
 
     connect(mMainWindow->ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(onTabChanged(int)));
+    connect(mMainWindow->ui->btnClearConsole, SIGNAL(clicked()), this, SLOT(slotClearConsole()));
+    connect(mMainWindow->ui->btnOpenFile, SIGNAL(clicked()), this, SLOT(slotOpenFile()));
+    connect(mMainWindow->ui->btnCloseFile, SIGNAL(clicked()), this, SLOT(slotCloseFile()));
+    mMainWindow->ui->btnCloseFile->setEnabled(false);
+
+    //****************************************************************************
+    // Fill the settings panel
+    //****************************************************************************
+    appSettings->form(mMainWindow->ui->widSettings);
+
+    //****************************************************************************
+    // Set Console style
+    //****************************************************************************
+    QString css;
+    css.sprintf("QTextEdit {color: '%s'; background-color: '%s'; font-size: %spx;}",
+                appSettings->get("CONSOLE_TEXT_COLOR").toString().toStdString().c_str(),
+                appSettings->get("CONSOLE_BACKGROUND_COLOR").toString().toStdString().c_str(),
+                appSettings->get("CONSOLE_FONT_SIZE").toString().toStdString().c_str()
+                );
+    qDebug() << css;
+    mMainWindow->ui->txtConsole->setStyleSheet(css);
 
     //****************************************************************************
     // Display clock timer
     //****************************************************************************
-    QTimer *t = new QTimer(this);
-    t->setInterval(1000);
-    connect(t, &QTimer::timeout, [&]() {
+    QTimer *tTime = new QTimer(this);
+    tTime->setInterval(1000);
+    connect(tTime, &QTimer::timeout, [&]() {
         QString time1 = QDateTime::currentDateTime().toString(appSettings->get("TITLE_BAR_TIME_FORMAT").toString());
         lblTitle->setText(time1);
     } );
-    t->start();
+    tTime->start();
+
+    //****************************************************************************
+    // Alarms timer
+    //****************************************************************************
+    QTimer *tAlarm=new QTimer(this);
+    tAlarm->setInterval(15000);
+    connect(tAlarm, SIGNAL(timeout()), this, SLOT(alarmCheck()));
+    tAlarm->start();
 
     setCentralWidget(centralWidget);
     readSettings();
 
     initLauncher();
     showMessage("Welcome");
+    txtCommand->setFocus();
+
+    //****************************************************************************
+    // Set application visible on all desktops for Linux
+    //****************************************************************************
+#ifdef Q_OS_LINUX
+    unsigned long data = 0xFFFFFFFF;
+    XChangeProperty (QX11Info::display(),
+                  winId(),
+                  XInternAtom(QX11Info::display(), "_NET_WM_DESKTOP", false),
+                  XA_CARDINAL,
+                  32,
+                  PropModeReplace,
+                  reinterpret_cast<unsigned char *>(&data),
+                  1);
+#endif
+
+    //****************************************************************************
+    // Debug Screens
+    //****************************************************************************
+    qDebug() << "*** Qt screens ***";
+    const auto screens = qApp->screens();
+    for (int ii = 0; ii < screens.count(); ++ii) {
+        qDebug() << ii+1 << screens[ii]->geometry();
+    }
+}
+
+//******************************************************************************
+// eventFilter()
+//******************************************************************************
+bool LauncherWindow::eventFilter(QObject* obj, QEvent *event) {
+    if (obj == txtCommand) {
+        if(event->type() == 6 ) { // QEvent::KeyPress
+            QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
+            if (keyEvent->key() == Qt::Key_Up) {
+                // qDebug() << "lineEdit -> Qt::Key_Up";
+                txtCommand->setText(rpn->getPrevious());
+                return true;
+            } else if(keyEvent->key() == Qt::Key_Down) {
+                // qDebug() << "lineEdit -> Qt::Key_Down";
+                txtCommand->setText(rpn->getNext());
+                return true;
+            }
+        }
+        return false;
+    }
+    return QMainWindow::eventFilter(obj, event);
 }
 
 //******************************************************************************
@@ -191,6 +273,9 @@ void LauncherWindow::closeEvent(QCloseEvent *event) {
 // saveSettings()
 //******************************************************************************
 void LauncherWindow::saveSettings() {
+    //**************************************************************************
+    // Application state saving
+    //**************************************************************************
     QSettings registry(appConstants->getQString("ORGANIZATION_NAME"), appConstants->getQString("APPLICATION_NAME"));
     registry.setValue("geometry", saveGeometry());
     registry.setValue("windowState", saveState());
@@ -199,6 +284,12 @@ void LauncherWindow::saveSettings() {
     registry.setValue("currentMedia", mMainWindow->movieWidget->currentMedia);
     registry.setValue("currentSession", mMainWindow->movieWidget->file_1_url_2);
     registry.setValue("currentPosition", mMainWindow->movieWidget->mediaPlayer->position());
+    // TODO : Add Pin/Windowed state saving
+
+    //**************************************************************************
+    // RPN::Entries saving
+    //**************************************************************************
+    // TODO : Save RPN::Entries
 
     //**************************************************************************
     // Notepad saving
@@ -231,7 +322,7 @@ void LauncherWindow::readSettings() {
 
     const QByteArray geometry = registry.value("geometry", QByteArray()).toByteArray();
     if (geometry.isEmpty()) {
-        const QRect availableGeometry = screen()->availableGeometry();
+        const QRect availableGeometry = QApplication::desktop()->availableGeometry();
         resize(availableGeometry.width() / 3, availableGeometry.height() / 2);
         move((availableGeometry.width() - width()) / 2, (availableGeometry.height() - height()) / 2);
     } else {
@@ -264,6 +355,12 @@ void LauncherWindow::readSettings() {
         }
         mMainWindow->movieWidget->restoreSession(currentMedia, currentSession, currentPosition, currentRun);
     }
+    // TODO : Add Pin/Windowed state restoring
+
+    //**************************************************************************
+    // RPN::Entries restoring
+    //**************************************************************************
+    // TODO : Restore RPN::Entries
 
     //**************************************************************************
     // Notepad restoring
@@ -302,6 +399,7 @@ void LauncherWindow::mouseMoveEvent(QMouseEvent* event) {
     if (!mTitlebarWidget->underMouse() && !lblTitle->underMouse())
         return;
 
+    void closeEvent(QCloseEvent *);
     if( event->buttons().testFlag(Qt::LeftButton) && mMoving) {
         this->move(this->pos() + (event->pos() - mLastMousePosition));
     }
@@ -375,21 +473,51 @@ void LauncherWindow::slotMaximized() {
 //******************************************************************************
 void LauncherWindow::slotEnter() {
     QString cmd = txtCommand->text();
-    Interpreter *inter = new Interpreter(cmd);
-    displayOSD(inter->xeq());
-    QTimer::singleShot(0, txtCommand, SLOT(selectAll()));
-    if (inter->getRC()== Interpreter::RC_EXIT){
-        close();
+    rpn->setEntry(cmd);
+    int rc = rpn->xeq();
+    if (rc == RPN::RC_OK) {
+        displayOutput(cmd, rpn->out);
+    } else if (rc == RPN::RC_CLS) {
+        mMainWindow->ui->txtConsole->setText("");
+        showMessage("Console cleared");
+    } else if (rc == RPN::RC_LOCK) {
+        slotLock();
+    } else if (rc == RPN::RC_EXIT) {
+        slotClosed();
+    } else if (rc == RPN::RC_SHUTDOWN) {
+        slotOff();
+    } else if (rc == RPN::RC_ALIAS) {
+        // TODO : Display ALIAS result
+    } else if (rc == RPN::RC_COMMAND) {
+        // TODO : Display COMMAND result
+        runCommand("./", cmd.mid(1), mMainWindow->ui->txtConsole);
+    } else {
+        displayOutput(cmd, rpn->error);
     }
+    QTimer::singleShot(0, txtCommand, SLOT(selectAll()));
 }
 
 //******************************************************************************
+// displayOutput()
+//******************************************************************************
+void LauncherWindow::displayOutput(QString cmd, QString out) {
+    mMainWindow->ui->txtConsole->append(appSettings->get("PROMPT_WINDOW_MODE").toString() + cmd);
+    mMainWindow->ui->txtConsole->append(appSettings->get("PROMPT_WINDOW_MODE").toString() + out);
+    mMainWindow->ui->txtConsole->append("");
+    if (mMainWindow->isVisible() == true) {
+        showMessage(appSettings->get("PROMPT_WINDOW_MODE").toString() + out, false);
+    } else {
+        displayOSD(appSettings->get("PROMPT_BAR_MODE").toString() + out);
+    }
+}
+
+//******************************************************************************v
 // displayOSD()
 //******************************************************************************
 void LauncherWindow::displayOSD(QString out) {
     OSDDialog *osd = new OSDDialog(this, &out);
     osd->setModal(false);
-    osd->move(0,0);
+    osd->move(mapToGlobal(this->rect().bottomLeft()));
     txtCommand->setFocus();
     osd->show();
     txtCommand->setFocus();
@@ -406,13 +534,84 @@ void LauncherWindow::slotClosed() {
 // slotClock()
 //******************************************************************************
 void LauncherWindow::slotClock() {
-    // TODO : Clock
+    // TODO : Alarms
+    AlarmsDialog dlg = new AlarmsDialog(this);
+    int rc = dlg.exec();
+    if (rc == QDialog::Accepted) {
+        Alarms::alarm a = dlg.a;
+        alarms->add(a);
+    }
 }
 
 //******************************************************************************
 // slotPin()
 //******************************************************************************
 void LauncherWindow::slotPin() {
+    if (mMainWindow->isVisible()==true) {
+        saveSettings();
+
+        // QScreen *myScreen = QGuiApplication::primaryScreen();
+        // QRect screenGeometry = myScreen->availableGeometry();
+
+        // QScreen *pScreen = QGuiApplication::screenAt(this->mapToGlobal({this->width()/2,0}));
+        QScreen *pScreen = getActiveScreen(this);
+        QRect availableScreenSize = pScreen->availableGeometry();
+
+        // QDesktopWidget widget;
+        // QRect screenGeometry = widget.screenGeometry();//.availableGeometry(widget.primaryScreen());
+        int height = this->pos().y() + btnPin->pos().y();
+        bool topBar = appSettings->get("TITLE_BAR_POSITION_TOP").toBool();
+        if (topBar == false) {
+            height +=  mMainWindow->height();
+        }
+
+        qDebug("Screen Width = %d",availableScreenSize.width());
+        qDebug("Screen Left  = %d",availableScreenSize.left());
+        int width = availableScreenSize.width() + availableScreenSize.left() - btnPin->width() - 2;
+        qDebug("POS          = %d",width);
+        // shrink the window as the titlebar only
+        this->layout()->setSizeConstraint(QLayout::SetFixedSize);
+        // pause the media if any
+        if (currentTabIndex == 3 && mMainWindow->movieWidget->isVideoAvailable == true) {
+            mMainWindow->movieWidget->pauseForce();
+        }
+
+        // hide unnecessary controls in the titlebar
+        btnClock->setVisible(false);
+        btnOff->setVisible(false);
+        btnLock->setVisible(false);
+        btnPack->setVisible(false);
+        btnSettings->setVisible(false);
+        txtCommand->setVisible(false);
+        lblTitle->setVisible(false);
+        mMainWindow->setVisible(false);
+
+        // move the remaining button against the edge of the screen
+        move(width, height);
+
+    } else {
+        this->layout()->setSizeConstraint(QLayout::SetMinAndMaxSize);
+        mMainWindow->setVisible(true);
+        btnClock->setVisible(true);
+        btnOff->setVisible(true);
+        btnLock->setVisible(true);
+        btnPack->setVisible(true);
+        btnSettings->setVisible(true);
+        txtCommand->setVisible(true);
+        lblTitle->setVisible(true);
+        readSettings();
+        if (currentTabIndex == 3 && mMainWindow->movieWidget->isVideoAvailable == true) {
+            if (mMainWindow->movieWidget->isPlaying == true) {
+                mMainWindow->movieWidget->playForce();
+            }
+        }
+    }
+}
+
+//******************************************************************************
+// slotPack()
+//******************************************************************************
+void LauncherWindow::slotPack() {
     if (mMainWindow->isVisible()==true) {
         saveSettings();
         this->layout()->setSizeConstraint(QLayout::SetFixedSize);
@@ -436,8 +635,11 @@ void LauncherWindow::slotPin() {
 // slotLock()
 //******************************************************************************
 void LauncherWindow::slotLock() {
-    // rundll32.exe user32.dll,LockWorkStation
-    // dbus-send --type=method_call --dest=org.mate.ScreenSaver /org/mate/ScreenSaver org.mate.ScreenSaver.Lock
+    // pause the media if any
+    if (currentTabIndex == 3 && mMainWindow->movieWidget->isVideoAvailable == true) {
+        mMainWindow->movieWidget->pauseForce();
+    }
+
     QProcess *process = new QProcess(this);
 #ifdef Q_OS_LINUX
     QString program = "dbus-send --type=method_call --dest=org.mate.ScreenSaver /org/mate/ScreenSaver org.mate.ScreenSaver.Lock";
@@ -453,29 +655,86 @@ void LauncherWindow::slotLock() {
 // slotOff()
 //******************************************************************************
 void LauncherWindow::slotOff() {
-    // TODO : Off
-    close();
+    PowerDialog dlg = new PowerDialog(this);
+    int rc = dlg.exec();
+    if (rc == PowerDialog::LOCK) {
+        slotLock();
+    } else if (rc == PowerDialog::EXIT) {
+        close();
+    } else if (rc == PowerDialog::SHUTDOWN) {
+        shutdownComputer(dlg.getTimeout(), false);
+    } else if (rc == PowerDialog::REBOOT) {
+        shutdownComputer(dlg.getTimeout(), true);
+    }
 }
 
 //******************************************************************************
 // slotSettings()
 //******************************************************************************
 void LauncherWindow::slotSettings() {
-    // TODO : Settings
+    mMainWindow->ui->tabWidget->setCurrentIndex(4);
 }
 
 //******************************************************************************
-// displaySettings()
+// slotClearConsole()
 //******************************************************************************
-void LauncherWindow::displaySettings() {
-    // TODO : Display Settings
+void LauncherWindow::slotClearConsole() {
+    mMainWindow->ui->txtConsole->setText("");
+    showMessage("Console cleared");
+}
+
+//******************************************************************************
+// slotOpenFile()
+//******************************************************************************
+void LauncherWindow::slotOpenFile() {
+    QFileDialog dlg;
+    QString homeDir=QDir::homePath () ;
+    QString fn = dlg.getOpenFileName(0, tr("Open Log File..."), homeDir, tr("Log files (*)"));
+    if (!fn.isEmpty())
+    {
+        showMessage("Opening " + fn);
+        mMainWindow->ui->lblOpenFile->setText(fn);
+        mMainWindow->ui->btnCloseFile->setEnabled(true);
+        logFile.setFileName(fn);
+        logFile.open(QIODevice::ReadOnly|QIODevice::Text);
+        logStream.setDevice(&logFile);
+        connect(&timerLog, SIGNAL(timeout()), this, SLOT(readLog()));
+        logMe = true;
+        timerLog.start(100);
+    }
+}
+
+//******************************************************************************
+// readLog()
+//******************************************************************************
+void LauncherWindow::readLog() {
+    while(!logStream.atEnd() && logMe) {
+        QString line = logStream.readLine();
+        mMainWindow->ui->txtConsole->append(line);
+    }
+}
+
+//******************************************************************************
+// slotCloseFile()
+//******************************************************************************
+void LauncherWindow::slotCloseFile() {
+    mMainWindow->ui->lblOpenFile->setText("");
+    showMessage("Stopping process");
+    mMainWindow->ui->btnCloseFile->setEnabled(false);
+    logMe = false;
+    logFile.close();
+    this->pCmd->kill();
 }
 
 //******************************************************************************
 // showMessage()
 //******************************************************************************
-void LauncherWindow::showMessage(QString msg) {
-    mMainWindow->ui->statusbar->showMessage(msg, appSettings->get("MESSAGE_TIMEOUT").toInt());
+void LauncherWindow::showMessage(QString msg, bool timed) {
+    if (timed) {
+        mMainWindow->ui->statusbar->showMessage(msg, appSettings->get("MESSAGE_TIMEOUT").toInt());
+    } else {
+        mMainWindow->ui->statusbar->showMessage(msg, 0);
+    }
 }
 
 //******************************************************************************
@@ -483,13 +742,20 @@ void LauncherWindow::showMessage(QString msg) {
 //******************************************************************************
 void LauncherWindow::initLauncher() {
     //**************************************************************************
-    // Set FileSystem Model for Launcher
+    // Set FileSystem Mode for Launcher
     //**************************************************************************
     listModel = new MyFileSystemModel(this, appSettings);
     listModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
     mMainWindow->ui->lstLauncher->setModel(listModel);
     mMainWindow->ui->lstLauncher->setRootIndex(listModel->setRootPath(launcherDir));
     mMainWindow->ui->lstLauncher->setDragEnabled(true);
+    mMainWindow->ui->lstLauncher->setAcceptDrops(true);
+    mMainWindow->ui->lstLauncher->setDragDropMode(QAbstractItemView::DragDrop);
+
+    mMainWindow->ui->lstLauncher->setSelectionMode(QAbstractItemView::SingleSelection);
+    mMainWindow->ui->lstLauncher->viewport()->setAcceptDrops(true);
+    mMainWindow->ui->lstLauncher->setDropIndicatorShown(true);
+
     int viewMode = appSettings->get("LAUNCHER_VIEW").toInt();
     if (viewMode == Settings::LAUNCHER_VIEW_ICON) {
         mMainWindow->ui->lstLauncher->setViewMode(QListView::IconMode);
@@ -637,6 +903,7 @@ void LauncherWindow::editShortcut(Shortcut *sh) {
 // updateShortcut()
 //******************************************************************************
 void LauncherWindow::updateShortcut(EditShortcutDialog *dlg) {
+    // TODO : Double-check & fix shortcut edit
     QString shortcutName = dlg->getShortcutName();
     QString shortcutCommand = dlg->getShortcutCommand();
     QString shortcutIcon = dlg->getShortcutIcon();
@@ -670,32 +937,6 @@ void LauncherWindow::createShortcut(NewShortcutDialog *dlg) {
 
     Shortcut *sh = new Shortcut(shortcutName, shortcutIcon, shortcutCommand, shortcutComment, shortcutType);
     sh->write(currentLauncherDir);
-
-/*
-#ifdef Q_OS_LINUX
-    // TODO : Create Linux Shortcut
-    QString shortcutFileName =  QDir(currentLauncherDir).filePath(shortcutName);
-    QFile shortcutFile(shortcutFileName);
-    if (shortcutFile.open(QIODevice::WriteOnly)) {
-        QTextStream stream(&shortcutFile);
-        stream << "#!/bin/bash" << Qt::endl;
-        stream << "#" << Qt::endl;
-        stream << "# " << appConstants->getQString("LAUNCHER_COPYRIGHT") << Qt::endl;
-        stream << "#" << Qt::endl;
-        stream << "\"" << shortcutCommand << "\" " << shortcutArgs << Qt::endl;
-        stream << "if [ $? -ne 0 ]" << Qt::endl;
-        stream << "then" << Qt::endl;
-        stream << "    xdg-open \"" << shortcutCommand << "\" " << shortcutArgs << Qt::endl;
-        stream << "fi" << Qt::endl;
-        shortcutFile.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner|QFile::ReadGroup|QFile::ExeGroup|QFile::ReadOther|QFile::ExeOther);
-        shortcutFile.close();
-    }
-
-#endif
-#ifdef Q_OS_WIN32
-    // TODO : Create Windows Shortcut
-#endif
-*/
 }
 
 //******************************************************************************
@@ -711,6 +952,60 @@ void LauncherWindow::newFolder() {
             QDir().mkdir(folderDir);
         }
     }
+}
+
+//******************************************************************************
+// shutdownComputer()
+//******************************************************************************
+void LauncherWindow::shutdownComputer(int timeout=1, bool reboot=false) {
+#ifdef Q_OS_LINUX
+    if (reboot == true) {
+        if (timeout == 0) {
+            showMessage("Rebooting the computer now");
+            QStringList args = {"shutdown", "-r", "now"};
+            QProcess::startDetached("sudo", args);
+        } else {
+            showMessage(QString("Rebooting the computer in %1 minute(s)").arg(timeout));
+            QStringList args = {"shutdown", "-r", QString::number(timeout)};
+            QProcess::startDetached("sudo", args);
+        }
+    } else {
+        if (timeout == 0) {
+            showMessage("Shutting down the computer now");
+            QStringList args = {"shutdown", "now"};
+            QProcess::startDetached("sudo", args);
+        } else {
+            showMessage(QString("Shutting down the computer in %1 minute(s)").arg(timeout));
+            QStringList args = {"shutdown", QString::number(timeout)};
+            QProcess::startDetached("sudo", args);
+        }
+    }
+#endif
+    // TODO : Test Windows reboot & shutdown
+#ifdef Q_OS_WIN32
+    if (reboot == true) {
+        if (timeout == 0) {
+            showMessage("Rebooting the computer now");
+            QStringList args = {"/r", "/t", "0"};
+            QProcess::startDetached("shutdown", args);
+        } else {
+            showMessage(QString("Rebooting the computer in %1 minute(s)").arg(timeout));
+            QStringList args = {"/r", "/t", QString::number(60 * timeout)};
+            QProcess::startDetached("shutdown", args);
+        }
+    } else {
+        if (timeout == 0) {
+            showMessage("Shutting down the computer now");
+            QStringList args = {"/s", "/t", "0"};
+            QProcess::startDetached("shutdown", args);
+        } else {
+            showMessage(QString("Shutting down the computer in %1 minute(s)").arg(timeout));
+            QStringList args = {"/s", "/t", QString::number(60 * timeout)};
+            QProcess::startDetached("shutdown", args);
+        }
+    }
+    // QProcess::startDetached("shutdown -s -f -t 00");
+#endif
 }
 
 //******************************************************************************
@@ -737,12 +1032,138 @@ void LauncherWindow::onLaunchItemClicked(QModelIndex index)
             showMessage("Opening " + currentLauncherDir);
             QProcess::startDetached("xdg-open", QStringList(currentLauncherDir));
 #endif
+            // TODO : start WIN32
 #ifdef Q_OS_WIN32
             // TODO : start
 #endif
         }
     }
     mMainWindow->ui->lstLauncher->setRootIndex(listModel->setRootPath(currentLauncherDir));
+}
+
+//******************************************************************************
+// alarmCheck()
+//******************************************************************************
+void LauncherWindow::alarmCheck() {
+    // TODO : check alarms
+    // qDebug() << "Check Alarm !";
+    QList<Alarms::alarm> *alarms;
+    Alarms ac;
+    alarms = ac.getAlarms();
+    for(int i = 0; i < alarms->count(); ++i )
+    {
+        if(ac.isEnabled(alarms->at(i))) {
+            // qDebug() << alarms->at(i).message;
+            QDateTime RightNow = QDateTime::currentDateTime();
+            bool soundAlarm = false;
+
+            if (ac.getHour(alarms->at(i)) == RightNow.time().hour() && ac.getMinute(alarms->at(i)) == RightNow.time().minute()) {
+                switch(RightNow.date().dayOfWeek()) {
+                    //WeekDay Alarms
+                    case 1:
+                    if(ac.isMonEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 2:
+                    if(ac.isTueEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 3:
+                    if(ac.isWedEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 4:
+                    if(ac.isThuEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 5:
+                    if(ac.isFriEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 6:
+                    if(ac.isSatEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+
+                    case 7:
+                    if(ac.isSunEnabled(alarms->at(i))) {
+                        soundAlarm = true;
+                    }
+                    break;
+                }
+            }
+
+            if(soundAlarm) {
+                QSound::play(ac.getSound(alarms->at(i)));
+                displayOutput("alarm", ac.getMessage(alarms->at(i)));
+            }
+        }
+    }
+}
+
+//******************************************************************************
+// getActiveScreen()
+//******************************************************************************
+QScreen *LauncherWindow::getActiveScreen(QWidget* pWidget) const
+{
+    QScreen* pActive = nullptr;
+    while (pWidget) {
+        auto w = pWidget->windowHandle();
+        if (w != nullptr) {
+            pActive = w->screen();
+            break;
+        }
+        else
+            pWidget = pWidget->parentWidget();
+    }
+    return pActive;
+}
+
+//******************************************************************************
+// runCommand()
+//******************************************************************************
+void LauncherWindow::runCommand(QString dir, QString cmd, QTextEdit *view) {
+    auto process = new QProcess;
+    process->setWorkingDirectory(dir);
+
+    // Slot Read STDIN
+    QObject::connect(process, &QProcess::readyReadStandardOutput, [process,view]() {
+        auto output=process->readAllStandardOutput();
+        view->append(output);
+    });
+
+    // Slot Read STDERR
+    QObject::connect(process, &QProcess::readyReadStandardError, [process,view]() {
+        auto output=process->readAllStandardError();
+        view->append(output);
+    });
+
+    // Slot FINISHED
+    QObject::connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), [this]() {
+        this->mMainWindow->ui->txtConsole->append("Process finished");
+        this->mMainWindow->ui->lblPID->setText("");
+    });
+
+    process->start(cmd);
+    process->setProcessChannelMode(QProcess::MergedChannels);
+
+    process->waitForStarted();
+    qDebug() << process->error();
+    this->pCmd = process;
+    mMainWindow->ui->lblPID->setText("PID:" + QString::number(this->pCmd->processId()));
+    mMainWindow->ui->btnCloseFile->setEnabled(true);
+    view->show();
 }
 
 //******************************************************************************

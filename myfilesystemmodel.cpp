@@ -45,3 +45,52 @@ QVariant MyFileSystemModel::data(const QModelIndex &index, int role) const {
     }
     return QFileSystemModel::data(index, role);
 }
+
+//******************************************************************************
+// dropEvent()
+//******************************************************************************
+void MyFileSystemModel::dropEvent(QDropEvent *ev) {
+    qDebug("dropEvent");
+}
+
+//******************************************************************************
+// dragEnterEvent()
+//******************************************************************************
+void MyFileSystemModel::dragEnterEvent(QDragEnterEvent *ev) {
+    // Set the drop action to be the proposed action.
+    // ev->acceptProposedAction();
+    qDebug("dragEnterEvent");
+}
+
+void MyFileSystemModel::dragMoveEvent(QDragMoveEvent *ev)
+{
+    // The event needs to be accepted here
+    // ev->accept();
+    qDebug("dragMoveEvent");
+}
+
+
+Qt::ItemFlags MyFileSystemModel::flags(const QModelIndex &index) const
+{
+    Qt::ItemFlags defaultFlags = QFileSystemModel::flags(index);
+
+    if (!index.isValid())
+        return defaultFlags;
+
+    const QFileInfo& fileInfo = this->fileInfo(index);
+
+    // The target
+    if (fileInfo.isDir())
+    {
+        // allowed drop
+        return Qt::ItemIsDropEnabled | defaultFlags;
+    }
+    // The source: should be directory (in that case)
+    else if (fileInfo.isFile())
+    {
+        // allowed drag
+        return Qt::ItemIsDragEnabled | defaultFlags;
+    }
+
+    return defaultFlags;
+}

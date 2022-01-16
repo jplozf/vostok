@@ -11,10 +11,23 @@
 #include <QVBoxLayout>
 #include <QFileDialog>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QTimer>
 #include <QGraphicsDropShadowEffect>
+#include <QPainter>
+#include <QTextCharFormat>
+#include <QGraphicsTextItem>
+#include <QSpinBox>
+#include <QTimeEdit>
+#include <QDirIterator>
+#include <QComboBox>
+#include <QSound>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+
 #include "shortcuts.h"
 #include "settings.h"
+#include "alarms.h"
 
 //******************************************************************************
 // NewShortcutDialog()
@@ -124,5 +137,86 @@ private:
     QTimer *tmrDisplay;
 };
 
+//******************************************************************************
+// OSDLabel()
+//******************************************************************************
+class OSDLabel : public QLabel
+{
+    Q_OBJECT
+public:
+    explicit OSDLabel(QWidget *parent = nullptr);
+    explicit OSDLabel(QString *text);
+
+protected:
+    void paintEvent(QPaintEvent *) override;
+
+signals:
+
+};
+
+
+//******************************************************************************
+// PowerDialog()
+//******************************************************************************
+class PowerDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    PowerDialog(QWidget*);
+    int getTimeout();
+    static const int CANCEL;
+    static const int LOCK;
+    static const int SHUTDOWN;
+    static const int REBOOT;
+    static const int EXIT;
+
+private:
+    void done(int rc);
+    QPushButton *btnCancel;
+    QPushButton *btnLock;
+    QPushButton *btnShutdown;
+    QPushButton *btnReboot;
+    QPushButton *btnExit;
+    QSpinBox *spnTimeout;
+
+private slots:
+    void returnLock();
+    void returnShutdown();
+    void returnReboot();
+    void returnExit();
+    void returnCancel();
+};
+
+//******************************************************************************
+// AlarmsDialog()
+//******************************************************************************
+class AlarmsDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    AlarmsDialog(QWidget*);
+    Alarms::alarm a;
+    QTableWidget *tblAlarms;
+
+private:
+    QCheckBox *chkEnabled;
+    QTimeEdit *tmeAlarm;
+    QCheckBox *chkMonday;
+    QCheckBox *chkTuesday;
+    QCheckBox *chkWednesday;
+    QCheckBox *chkThursday;
+    QCheckBox *chkFriday;
+    QCheckBox *chkSaturday;
+    QCheckBox *chkSunday;
+    QLineEdit *txtMessage;
+    QPushButton *btnPlay;
+    QComboBox *lstSounds;
+    QPushButton *btnCancel;
+    QPushButton *btnOK;
+
+private slots:
+    void playSound();
+    void done(int rc);
+};
 
 #endif // DIALOGS_H

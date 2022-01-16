@@ -18,7 +18,7 @@ lock
 shutdown
 version
 internet, browser
-file, files
+file, files, explorer
 excel
 word
 chrome
@@ -32,3 +32,8 @@ alarm
 settings
 printer
 help
+
+
+*** Qt screens ***
+1 QRect(0,0 1920x1080)
+2 QRect(1920,0 1024x1280)

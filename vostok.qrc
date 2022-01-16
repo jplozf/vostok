@@ -178,4 +178,19 @@
         <file>png/vostok_32.png</file>
         <file>png/vostok_48.png</file>
     </qresource>
+    <qresource prefix="/sounds">
+        <file>alarms/TF002.WAV</file>
+        <file>alarms/TF003.WAV</file>
+        <file>alarms/TF004.WAV</file>
+        <file>alarms/TF007.WAV</file>
+        <file>alarms/TF009.WAV</file>
+        <file>alarms/TF010.WAV</file>
+        <file>alarms/TF012.WAV</file>
+        <file>alarms/TF014.WAV</file>
+        <file>alarms/TF046.WAV</file>
+        <file>alarms/TF047.WAV</file>
+        <file>alarms/TF048.WAV</file>
+        <file>alarms/TF049.WAV</file>
+        <file>alarms/TF050.WAV</file>
+    </qresource>
 </RCC>
