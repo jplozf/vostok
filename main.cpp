@@ -18,6 +18,10 @@ int main(int argc, char *argv[])
     bw.setWindowTitle("Vostok");
     bw.show();
 
+    // TODO : Manage Dark Mode
+    // a.setStyle("Fusion");
+    // a.setPalette(QPalette(QPalette::Dark));
+
     return a.exec();
 }
 

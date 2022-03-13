@@ -96,6 +96,7 @@ void Shortcut::write(QString target) {
     shortcutFile.setValue("Name", this->name);
     shortcutFile.setValue("Comment", this->comment);
     shortcutFile.setValue("Type", this->type);
+    shortcutFile.sync();
 }
 
 /*

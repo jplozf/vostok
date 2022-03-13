@@ -11,7 +11,7 @@ const int Settings::LAUNCHER_ICON_SIZE_MEDIUM=1;
 const int Settings::LAUNCHER_ICON_SIZE_LARGE=2;
 
 //******************************************************************************
-// SettingsV2()
+// Settings()
 //******************************************************************************
 Settings::Settings()
 {
@@ -32,6 +32,7 @@ Settings::Settings()
     defaults["CONSOLE_TEXT_COLOR"] = QVariant(QObject::tr("green"));
     defaults["CONSOLE_BACKGROUND_COLOR"] = QVariant(QObject::tr("black"));
     defaults["CONSOLE_FONT_SIZE"] = QVariant(16);
+    defaults["CONSOLE_HISTORY"] = QVariant(1000);
 
     // Read the settings from user's settings
     read();
@@ -112,7 +113,7 @@ void Settings::form(QWidget *w) {
     form->addRow(new QLabel("<b>ᐅ</b>"), new QLabel("<b>RPN HELP</b>"));
     form->addRow(new QLabel(""), new QLabel(""));
 
-    RPN *rpn = new RPN();
+    RPN *rpn = new RPN(nullptr);
     for(auto e : rpn->help.keys())
     {
         QLabel *lbl = new QLabel(" " + e + " ");

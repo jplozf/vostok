@@ -29,6 +29,12 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+class RPN;
+class Settings;
+class MyFileSystemModel;
+class NewShortcutDialog;
+class EditShortcutDialog;
+
 //******************************************************************************
 // Class MainWindow
 //******************************************************************************
@@ -52,10 +58,13 @@ class LauncherWindow: public QMainWindow
 public:
     explicit LauncherWindow(QWidget *parent = 0);
     ~LauncherWindow() {}
+    MainWindow *mMainWindow;
     void closeEvent(QCloseEvent *);
     void saveSettings();
     void readSettings();
     void showMessage(QString, bool timed = true);
+    void displayOutput(QString cmd, QString out);
+
     int currentTabIndex = 0;
     QString appDir;
     QString launcherDir;
@@ -87,6 +96,7 @@ private slots:
     void slotClearConsole();
     void slotOpenFile();
     void slotCloseFile();
+    void slotKillProcess();
     void onTabChanged(int);
     void onContextMenuLauncher(QPoint);
     void onLaunchItemClicked(QModelIndex);
@@ -97,10 +107,12 @@ protected slots:
     void readLog();
 
 private:
-    MainWindow *mMainWindow;
     QHBoxLayout *windowBarLayout;
     QWidget *mTitlebarWidget;
     QLabel *lblTitle;
+    QLabel *lblPrompt;
+    QLabel *lblAngularMode;
+    QLabel *lblDepthStack;
     QLineEdit *txtCommand;
     QPushButton *btnMinimize;
     QPushButton *btnRestore;
@@ -135,7 +147,8 @@ private:
     void editShortcut(Shortcut *);
     void updateShortcut(EditShortcutDialog *);
     void displayOSD(QString out);
-    void displayOutput(QString cmd, QString out);
+    void displayStack(QStack<QVariant> stack);
+    void displayVars(QMap<QString, QVariant> vars);
     void shutdownComputer(int timeout, bool reboot);
     void runCommand(QString dir, QString cmd, QTextEdit *view);
     QTimer timerLog;
@@ -143,8 +156,9 @@ private:
     QTextStream logStream;
     bool logMe;
     QProcess *pCmd;
-
-
+    void setConsoleStyle();
+    void setPrompt(QString s);
+    void clearPrompt();
 };
 
 #endif // MAINWINDOW_H

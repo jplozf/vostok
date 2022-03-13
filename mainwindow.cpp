@@ -1,12 +1,13 @@
 #include "mainwindow.h"
 
+#include <QGraphicsTextItem>
+
 //******************************************************************************
 // LauncherWindow()
 //******************************************************************************
 LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::CustomizeWindowHint ) {
     appSettings = new Settings();
     appConstants = new Constants();    
-    rpn = new RPN();      
     alarms = new Alarms();
 
     //****************************************************************************
@@ -37,6 +38,7 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
 
     mMainWindow = new MainWindow(this);
     setWindowTitle(mMainWindow->windowTitle());
+    rpn = new RPN(mMainWindow);
 
     QVBoxLayout *verticalLayout = new QVBoxLayout();
     verticalLayout->setSpacing(0);
@@ -83,11 +85,13 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     btnPack->setIcon(QIcon(":/png/16x16/Attach.png"));
     connect(btnPack, SIGNAL(clicked()), this, SLOT(slotPack()));
 
+    /*
     btnSettings = new QPushButton(mTitlebarWidget);
     btnSettings->setObjectName("settingsButton");
     btnSettings->setFlat(true);
     btnSettings->setIcon(QIcon(":/png/16x16/Gear.png"));
     connect(btnSettings, SIGNAL(clicked()), this, SLOT(slotSettings()));
+    */
 
     btnLock = new QPushButton(mTitlebarWidget);
     btnLock->setObjectName("lockButton");
@@ -105,21 +109,24 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     lblTitle->setObjectName("windowTitle");
     lblTitle->setText("Hello");
 
+    lblPrompt = new QLabel(mTitlebarWidget);
+
     btnPin = new QPushButton(mTitlebarWidget);
     btnPin->setObjectName("pinButton");
     btnPin->setFlat(true);
     btnPin->setIcon(QIcon(":/png/16x16/Player Play.png"));
     connect(btnPin, SIGNAL(clicked()), this, SLOT(slotPin()));
 
-
     txtCommand = new QLineEdit(mTitlebarWidget);
     txtCommand->setObjectName("commandLine");
+    txtCommand->setStyleSheet("font: 10pt 'Consolas';");
     txtCommand->setText("");
     connect(txtCommand, SIGNAL(returnPressed()), this, SLOT(slotEnter()));
     txtCommand->installEventFilter(this);
 
     // windowBarLayout->addWidget(lblPrompt);
     windowBarLayout->addWidget(btnPin);
+    windowBarLayout->addWidget(lblPrompt);
     windowBarLayout->addWidget(txtCommand);
     windowBarLayout->addWidget(lblTitle);
 
@@ -154,7 +161,18 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     connect(mMainWindow->ui->btnClearConsole, SIGNAL(clicked()), this, SLOT(slotClearConsole()));
     connect(mMainWindow->ui->btnOpenFile, SIGNAL(clicked()), this, SLOT(slotOpenFile()));
     connect(mMainWindow->ui->btnCloseFile, SIGNAL(clicked()), this, SLOT(slotCloseFile()));
+    connect(mMainWindow->ui->btnKillProcess, SIGNAL(clicked()), this, SLOT(slotKillProcess()));
+
     mMainWindow->ui->btnCloseFile->setEnabled(false);
+    mMainWindow->ui->btnKillProcess->setEnabled(false);
+
+    lblDepthStack = new QLabel("0");
+    lblDepthStack->setStyleSheet("border: 1px solid black;");
+    mMainWindow->ui->statusbar->addPermanentWidget(lblDepthStack);
+
+    lblAngularMode = new QLabel((rpn->angularMode==RPN::DEGREES) ? "DEG" : "RAD");
+    lblAngularMode->setStyleSheet("border: 1px solid black;");
+    mMainWindow->ui->statusbar->addPermanentWidget(lblAngularMode);
 
     //****************************************************************************
     // Fill the settings panel
@@ -164,14 +182,7 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     //****************************************************************************
     // Set Console style
     //****************************************************************************
-    QString css;
-    css.sprintf("QTextEdit {color: '%s'; background-color: '%s'; font-size: %spx;}",
-                appSettings->get("CONSOLE_TEXT_COLOR").toString().toStdString().c_str(),
-                appSettings->get("CONSOLE_BACKGROUND_COLOR").toString().toStdString().c_str(),
-                appSettings->get("CONSOLE_FONT_SIZE").toString().toStdString().c_str()
-                );
-    qDebug() << css;
-    mMainWindow->ui->txtConsole->setStyleSheet(css);
+    setConsoleStyle();
 
     //****************************************************************************
     // Display clock timer
@@ -194,6 +205,8 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
 
     setCentralWidget(centralWidget);
     readSettings();
+    displayStack(rpn->stack);
+    displayVars(rpn->vars);
 
     initLauncher();
     showMessage("Welcome");
@@ -222,6 +235,34 @@ LauncherWindow::LauncherWindow(QWidget *parent) : QMainWindow(parent, Qt::Custom
     for (int ii = 0; ii < screens.count(); ++ii) {
         qDebug() << ii+1 << screens[ii]->geometry();
     }
+}
+
+//******************************************************************************
+// setConsoleStyle()
+//******************************************************************************
+void LauncherWindow::setConsoleStyle() {
+    QString css;
+    css.sprintf("QTextEdit {color: '%s'; background-color: '%s'; font-size: %spx;}",
+                appSettings->get("CONSOLE_TEXT_COLOR").toString().toStdString().c_str(),
+                appSettings->get("CONSOLE_BACKGROUND_COLOR").toString().toStdString().c_str(),
+                appSettings->get("CONSOLE_FONT_SIZE").toString().toStdString().c_str()
+                );
+    qDebug() << css;
+    mMainWindow->ui->txtConsole->setStyleSheet(css);
+}
+
+//******************************************************************************
+// setPrompt()
+//******************************************************************************
+void LauncherWindow::setPrompt(QString s) {
+    lblPrompt->setText(s);
+}
+
+//******************************************************************************
+// clearPrompt()
+//******************************************************************************
+void LauncherWindow::clearPrompt() {
+    lblPrompt->setText("");
 }
 
 //******************************************************************************
@@ -280,16 +321,53 @@ void LauncherWindow::saveSettings() {
     registry.setValue("geometry", saveGeometry());
     registry.setValue("windowState", saveState());
     registry.setValue("splitFocus", mMainWindow->ui->tabVideoSplitter->saveState());
+    registry.setValue("splitConsole", mMainWindow->ui->tabConsoleSplitter->saveState());
     registry.setValue("currentTab", mMainWindow->ui->tabWidget->currentIndex());
     registry.setValue("currentMedia", mMainWindow->movieWidget->currentMedia);
     registry.setValue("currentSession", mMainWindow->movieWidget->file_1_url_2);
     registry.setValue("currentPosition", mMainWindow->movieWidget->mediaPlayer->position());
+    registry.setValue("angularMode", lblAngularMode->text());
     // TODO : Add Pin/Windowed state saving
 
     //**************************************************************************
     // RPN::Entries saving
     //**************************************************************************
-    // TODO : Save RPN::Entries
+    QVectorIterator<QString> iEntries(rpn->entries);
+    int jEntries(0);
+    int cEntries(0);
+    int mEntries(appSettings->get("CONSOLE_HISTORY").toInt());
+    int eEntries(rpn->entries.length());
+    qDebug() << eEntries;
+    registry.beginWriteArray("Entries");
+    while (iEntries.hasNext()) {
+        QString entry = iEntries.next();
+        if ((eEntries - cEntries) <= mEntries) {
+            registry.setArrayIndex(jEntries++);
+            registry.setValue("Entry", entry);
+        }
+        cEntries++;
+    }
+    registry.endArray();
+
+    //**************************************************************************
+    // RPN::Vars saving
+    //**************************************************************************
+    registry.setValue("Variables", rpn->vars);
+
+    //**************************************************************************
+    // RPN::Stack saving
+    //**************************************************************************
+    QVectorIterator<QVariant> iStack(rpn->stack);
+    int jStack(0);
+    registry.beginWriteArray("Stack");
+    while (iStack.hasNext()) {
+        registry.setArrayIndex(jStack++);
+        QVariant v = iStack.next();
+        qDebug() << v.typeName();
+        registry.setValue("StackValue", v);
+        registry.setValue("StackType", v.typeName());
+    }
+    registry.endArray();
 
     //**************************************************************************
     // Notepad saving
@@ -339,6 +417,11 @@ void LauncherWindow::readSettings() {
         mMainWindow->ui->tabVideoSplitter->restoreState(registry.value("splitFocus").toByteArray());
     }
 
+    const QByteArray splitConsole = registry.value("splitConsole", QByteArray()).toByteArray();
+    if (!splitConsole.isEmpty()) {
+        mMainWindow->ui->tabConsoleSplitter->restoreState(registry.value("splitConsole").toByteArray());
+    }
+
     const int currentTab = registry.value("currentTab").toInt();
     if (currentTab >= 0) {
         mMainWindow->ui->tabWidget->setCurrentIndex(currentTab);
@@ -348,6 +431,8 @@ void LauncherWindow::readSettings() {
     const int currentSession = registry.value("currentSession").toInt();
     const QString currentMedia = registry.value("currentMedia").toString();
     const qint64 currentPosition = registry.value("currentPosition").toUInt();
+    lblAngularMode->setText((registry.value("angularMode").toString().isEmpty()) ? "DEG" : registry.value("angularMode").toString());
+    rpn->angularMode = (lblAngularMode->text() == "DEG") ? RPN::DEGREES : RPN::RADIANS;
     bool currentRun = false;
     if (currentMedia != "" && currentSession != 0) {
         if (currentTab == 3) {
@@ -360,7 +445,35 @@ void LauncherWindow::readSettings() {
     //**************************************************************************
     // RPN::Entries restoring
     //**************************************************************************
-    // TODO : Restore RPN::Entries
+    int sizeEntries = registry.beginReadArray("Entries");
+    for (int i = 0; i < sizeEntries; ++i) {
+        registry.setArrayIndex(i);
+        rpn->entries.append(registry.value("Entry").toString());
+    }
+    registry.endArray();
+
+    //**************************************************************************
+    // RPN::Vars restoring
+    //**************************************************************************
+    rpn->vars = registry.value("Variables").toMap();
+
+    //**************************************************************************
+    // RPN::Stack restoring
+    //**************************************************************************
+    int sizeStack = registry.beginReadArray("Stack");
+    for (int i = 0; i < sizeStack; ++i) {
+        registry.setArrayIndex(i);
+        auto value = registry.value("StackValue");
+        const auto typeName = registry.value("StackType").toString();
+        const bool wasNull = value.isNull();
+        const auto t = QMetaType::type(typeName.toUtf8());
+        if (value.userType() != t && !value.convert(t) && !wasNull) {
+            value = registry.value("StackVlue");
+        }
+        qDebug() << value.typeName();
+        rpn->stack.append(value);
+    }
+    registry.endArray();
 
     //**************************************************************************
     // Notepad restoring
@@ -472,29 +585,42 @@ void LauncherWindow::slotMaximized() {
 // slotEnter()
 //******************************************************************************
 void LauncherWindow::slotEnter() {
-    QString cmd = txtCommand->text();
-    rpn->setEntry(cmd);
-    int rc = rpn->xeq();
-    if (rc == RPN::RC_OK) {
-        displayOutput(cmd, rpn->out);
-    } else if (rc == RPN::RC_CLS) {
-        mMainWindow->ui->txtConsole->setText("");
-        showMessage("Console cleared");
-    } else if (rc == RPN::RC_LOCK) {
-        slotLock();
-    } else if (rc == RPN::RC_EXIT) {
-        slotClosed();
-    } else if (rc == RPN::RC_SHUTDOWN) {
-        slotOff();
-    } else if (rc == RPN::RC_ALIAS) {
-        // TODO : Display ALIAS result
-    } else if (rc == RPN::RC_COMMAND) {
-        // TODO : Display COMMAND result
-        runCommand("./", cmd.mid(1), mMainWindow->ui->txtConsole);
-    } else {
-        displayOutput(cmd, rpn->error);
+    QString cmd = txtCommand->text().trimmed();
+    if (!cmd.isEmpty()) {
+        rpn->setEntry(cmd);
+        lblPrompt->setText("");
+        int rc = rpn->xeq();
+        if (rc == RPN::RC_OK) {
+            displayOutput(cmd, rpn->out);
+        } else if (rc == RPN::RC_CLS) {
+            mMainWindow->ui->txtConsole->setText("");
+            showMessage("Console cleared");
+        } else if (rc == RPN::RC_MODE) {
+            lblAngularMode->setText((rpn->angularMode==RPN::DEGREES) ? "DEG" : "RAD");
+            displayOutput(cmd, rpn->out);
+            // TODO : Display stack
+        } else if (rc == RPN::RC_LOCK) {
+            slotLock();
+        } else if (rc == RPN::RC_EXIT) {
+            slotClosed();
+        } else if (rc == RPN::RC_SHUTDOWN) {
+            slotOff();
+        } else if (rc == RPN::RC_ALPHA) {
+            displayOutput(cmd, rpn->alpha);
+        } else if (rc == RPN::RC_ALIAS) {
+            // TODO : Display ALIAS result
+        } else if (rc == RPN::RC_COMMAND) {
+            runCommand("./", rpn->out.mid(1), mMainWindow->ui->txtConsole);
+        } else if (rc == RPN::RC_PROMPT) {
+            lblPrompt->setText(rpn->out + " : ");
+            displayStack(rpn->stack);
+            displayVars(rpn->vars);
+            lblDepthStack->setText(QString::number(rpn->stack.length()));
+        } else {
+            displayOutput(cmd, rpn->error);
+        }
+        QTimer::singleShot(0, txtCommand, SLOT(selectAll()));
     }
-    QTimer::singleShot(0, txtCommand, SLOT(selectAll()));
 }
 
 //******************************************************************************
@@ -504,6 +630,9 @@ void LauncherWindow::displayOutput(QString cmd, QString out) {
     mMainWindow->ui->txtConsole->append(appSettings->get("PROMPT_WINDOW_MODE").toString() + cmd);
     mMainWindow->ui->txtConsole->append(appSettings->get("PROMPT_WINDOW_MODE").toString() + out);
     mMainWindow->ui->txtConsole->append("");
+    displayStack(rpn->stack);
+    displayVars(rpn->vars);
+    lblDepthStack->setText(QString::number(rpn->stack.length()));
     if (mMainWindow->isVisible() == true) {
         showMessage(appSettings->get("PROMPT_WINDOW_MODE").toString() + out, false);
     } else {
@@ -511,7 +640,44 @@ void LauncherWindow::displayOutput(QString cmd, QString out) {
     }
 }
 
+//******************************************************************************
+// displayStack()
+//******************************************************************************
+void LauncherWindow::displayStack(QStack<QVariant> stack) {
+    mMainWindow->ui->lstStack->clear();
+    for (QVariant i : stack) {
+        QListWidgetItem *lwi = new QListWidgetItem();
+        lwi->setTextAlignment(Qt::AlignRight);
+        if (i.userType() == QMetaType::QStringList) {
+            lwi->setText("{ " + i.toStringList().join(" ") + " }");
+        } else {
+            lwi->setText(i.toString());
+        }
+        mMainWindow->ui->lstStack->addItem(lwi);
+    }
+    mMainWindow->ui->lstStack->scrollToBottom();
+    lblDepthStack->setText(QString::number(stack.length()));
+}
+
 //******************************************************************************v
+// displayVars()
+//******************************************************************************
+void LauncherWindow::displayVars(QMap<QString, QVariant> vars) {
+    mMainWindow->ui->lstVars->clear();
+    QMapIterator<QString, QVariant> i(vars);
+    while (i.hasNext()) {
+        i.next();
+        QListWidgetItem *lwi = new QListWidgetItem();
+        if (i.value().userType() == QMetaType::QStringList) {
+            lwi->setText(i.key() + " : " + "{ " + i.value().toStringList().join(" ") + " }");
+        } else {
+            lwi->setText(i.key() + " : " + i.value().toString());
+        }
+        mMainWindow->ui->lstVars->addItem(lwi);
+    }
+}
+
+//******************************************************************************
 // displayOSD()
 //******************************************************************************
 void LauncherWindow::displayOSD(QString out) {
@@ -565,10 +731,10 @@ void LauncherWindow::slotPin() {
             height +=  mMainWindow->height();
         }
 
-        qDebug("Screen Width = %d",availableScreenSize.width());
-        qDebug("Screen Left  = %d",availableScreenSize.left());
+        qDebug("Screen Width = %d", availableScreenSize.width());
+        qDebug("Screen Left  = %d", availableScreenSize.left());
         int width = availableScreenSize.width() + availableScreenSize.left() - btnPin->width() - 2;
-        qDebug("POS          = %d",width);
+        qDebug("POS          = %d", width);
         // shrink the window as the titlebar only
         this->layout()->setSizeConstraint(QLayout::SetFixedSize);
         // pause the media if any
@@ -577,11 +743,12 @@ void LauncherWindow::slotPin() {
         }
 
         // hide unnecessary controls in the titlebar
+        lblPrompt->setVisible(false);
         btnClock->setVisible(false);
         btnOff->setVisible(false);
         btnLock->setVisible(false);
         btnPack->setVisible(false);
-        btnSettings->setVisible(false);
+        // btnSettings->setVisible(false);
         txtCommand->setVisible(false);
         lblTitle->setVisible(false);
         mMainWindow->setVisible(false);
@@ -596,9 +763,10 @@ void LauncherWindow::slotPin() {
         btnOff->setVisible(true);
         btnLock->setVisible(true);
         btnPack->setVisible(true);
-        btnSettings->setVisible(true);
+        // btnSettings->setVisible(true);
         txtCommand->setVisible(true);
         lblTitle->setVisible(true);
+        lblPrompt->setVisible(true);
         readSettings();
         if (currentTabIndex == 3 && mMainWindow->movieWidget->isVideoAvailable == true) {
             if (mMainWindow->movieWidget->isPlaying == true) {
@@ -719,10 +887,19 @@ void LauncherWindow::readLog() {
 //******************************************************************************
 void LauncherWindow::slotCloseFile() {
     mMainWindow->ui->lblOpenFile->setText("");
-    showMessage("Stopping process");
+    showMessage("Closing file");
     mMainWindow->ui->btnCloseFile->setEnabled(false);
     logMe = false;
     logFile.close();
+}
+
+//******************************************************************************
+// slotKillProcess()
+//******************************************************************************
+void LauncherWindow::slotKillProcess() {
+    mMainWindow->ui->lblPID->setText("");
+    showMessage("Stopping process");
+    mMainWindow->ui->btnKillProcess->setEnabled(false);
     this->pCmd->kill();
 }
 
@@ -904,6 +1081,7 @@ void LauncherWindow::editShortcut(Shortcut *sh) {
 //******************************************************************************
 void LauncherWindow::updateShortcut(EditShortcutDialog *dlg) {
     // TODO : Double-check & fix shortcut edit
+    // TODO : Fix the folder location creation
     QString shortcutName = dlg->getShortcutName();
     QString shortcutCommand = dlg->getShortcutCommand();
     QString shortcutIcon = dlg->getShortcutIcon();
@@ -959,25 +1137,29 @@ void LauncherWindow::newFolder() {
 //******************************************************************************
 void LauncherWindow::shutdownComputer(int timeout=1, bool reboot=false) {
 #ifdef Q_OS_LINUX
+    // In order to perform shutdown options without running them as sudo,
+    // please key in these two following lines :
+    // sudo visudo
+    // jpl ALL=(ALL) NOPASSWD: /sbin/poweroff, /sbin/reboot, /sbin/shutdown
     if (reboot == true) {
         if (timeout == 0) {
             showMessage("Rebooting the computer now");
-            QStringList args = {"shutdown", "-r", "now"};
-            QProcess::startDetached("sudo", args);
+            QStringList args = {"-r", "now"};
+            QProcess::startDetached("shutdown", args);
         } else {
             showMessage(QString("Rebooting the computer in %1 minute(s)").arg(timeout));
-            QStringList args = {"shutdown", "-r", QString::number(timeout)};
-            QProcess::startDetached("sudo", args);
+            QStringList args = {"-r", QString::number(timeout)};
+            QProcess::startDetached("shutdown", args);
         }
     } else {
         if (timeout == 0) {
             showMessage("Shutting down the computer now");
-            QStringList args = {"shutdown", "now"};
-            QProcess::startDetached("sudo", args);
+            QStringList args = {"now"};
+            QProcess::startDetached("shutdown", args);
         } else {
             showMessage(QString("Shutting down the computer in %1 minute(s)").arg(timeout));
-            QStringList args = {"shutdown", QString::number(timeout)};
-            QProcess::startDetached("sudo", args);
+            QStringList args = {QString::number(timeout)};
+            QProcess::startDetached("shutdown", args);
         }
     }
 #endif
@@ -1140,29 +1322,37 @@ void LauncherWindow::runCommand(QString dir, QString cmd, QTextEdit *view) {
     // Slot Read STDIN
     QObject::connect(process, &QProcess::readyReadStandardOutput, [process,view]() {
         auto output=process->readAllStandardOutput();
-        view->append(output);
+        view->append(output.trimmed());
     });
 
     // Slot Read STDERR
     QObject::connect(process, &QProcess::readyReadStandardError, [process,view]() {
         auto output=process->readAllStandardError();
-        view->append(output);
+        view->append(output.trimmed());
     });
 
     // Slot FINISHED
     QObject::connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), [this]() {
         this->mMainWindow->ui->txtConsole->append("Process finished");
         this->mMainWindow->ui->lblPID->setText("");
+        this->mMainWindow->ui->btnKillProcess->setEnabled(false);
     });
 
+#ifdef Q_OS_LINUX
     process->start(cmd);
-    process->setProcessChannelMode(QProcess::MergedChannels);
+#endif
+#ifdef Q_OS_WIN32
+    cmd = "/c " + cmd;
+    QStringList cmdList= cmd.split(" ", QString::SkipEmptyParts);
+    process->start("cmd", cmdList);
+#endif
 
+    process->setProcessChannelMode(QProcess::MergedChannels);
     process->waitForStarted();
     qDebug() << process->error();
     this->pCmd = process;
     mMainWindow->ui->lblPID->setText("PID:" + QString::number(this->pCmd->processId()));
-    mMainWindow->ui->btnCloseFile->setEnabled(true);
+    mMainWindow->ui->btnKillProcess->setEnabled(true);
     view->show();
 }
 

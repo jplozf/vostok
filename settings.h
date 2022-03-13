@@ -18,8 +18,9 @@
 #include "rpn.h"
 #include "constants.h"
 
-class Settings: public QObject {
-
+class Settings: public QObject
+{
+    Q_OBJECT
 public:
     static const int LAUNCHER_VIEW_ICON;
     static const int LAUNCHER_VIEW_LIST;

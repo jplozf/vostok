@@ -170,35 +170,69 @@
         <item row="0" column="0">
          <layout class="QVBoxLayout" name="verticalLayout_2">
           <item>
-           <widget class="QScrollArea" name="scrollArea_2">
-            <property name="widgetResizable">
-             <bool>true</bool>
-            </property>
-            <widget class="QWidget" name="scrollAreaWidgetContents_2">
-             <property name="geometry">
-              <rect>
-               <x>0</x>
-               <y>0</y>
-               <width>552</width>
-               <height>211</height>
-              </rect>
-             </property>
-             <layout class="QGridLayout" name="gridLayout_8">
-              <item row="0" column="0">
-               <widget class="QTextEdit" name="txtConsole">
-                <property name="font">
-                 <font>
-                  <family>Consolas</family>
-                 </font>
-                </property>
-                <property name="readOnly">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </widget>
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
+            <item>
+             <widget class="QScrollArea" name="scrollArea_2">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="scrollAreaWidgetContents_2">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>550</width>
+                 <height>209</height>
+                </rect>
+               </property>
+               <layout class="QGridLayout" name="gridLayout_8">
+                <item row="0" column="0">
+                 <widget class="QSplitter" name="tabConsoleSplitter">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <widget class="QTextEdit" name="txtConsole">
+                   <property name="font">
+                    <font>
+                     <family>Consolas</family>
+                    </font>
+                   </property>
+                   <property name="readOnly">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                  <widget class="QTabWidget" name="tabWidget_2">
+                   <property name="currentIndex">
+                    <number>0</number>
+                   </property>
+                   <widget class="QWidget" name="tabStack">
+                    <attribute name="title">
+                     <string>Stack</string>
+                    </attribute>
+                    <layout class="QGridLayout" name="gridLayout_9">
+                     <item row="0" column="0">
+                      <widget class="QListWidget" name="lstStack"/>
+                     </item>
+                    </layout>
+                   </widget>
+                   <widget class="QWidget" name="tabVars">
+                    <attribute name="title">
+                     <string>Vars</string>
+                    </attribute>
+                    <layout class="QGridLayout" name="gridLayout_10">
+                     <item row="0" column="0">
+                      <widget class="QListWidget" name="lstVars"/>
+                     </item>
+                    </layout>
+                   </widget>
+                  </widget>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout">
@@ -259,6 +293,17 @@
              <widget class="QLabel" name="lblPID">
               <property name="text">
                <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnKillProcess">
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="vostok.qrc">
+                <normaloff>:/png/16x16/Close.png</normaloff>:/png/16x16/Close.png</iconset>
               </property>
              </widget>
             </item>

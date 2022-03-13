@@ -7,11 +7,13 @@
 // #include <QSet>
 // #include <QHash>
 
+class Settings;
+
 class MyFileSystemModel : public QFileSystemModel
 {
     Q_OBJECT
 public:
-    MyFileSystemModel(QObject* parent=0, Settings *appSettings=0);
+    MyFileSystemModel(QObject* parent=0, Settings* appSettings=0);
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const;
     Settings *appSettings;
 

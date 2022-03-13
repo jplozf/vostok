@@ -12,15 +12,28 @@ const int RPN::RC_SHUTDOWN = 18;
 const int RPN::RC_ALIAS = 19;
 const int RPN::RC_COMMAND = 20;
 const int RPN::RC_CLS = 21;
+const int RPN::RC_MODE = 22;
+const int RPN::RC_ALPHA = 23;
+const int RPN::RC_ERR_PROGRAM_STACK_EMPTY = 24;
 const int RPN::RC_PROMPT = 101;
 const QChar RPN::PREFIX_COMMAND = '$';
-const QChar RPN::PREFIX_ALIAS = '!';
+const QChar RPN::PREFIX_ALIAS = '@';
+const QChar RPN::PREFIX_STORE = '#';
+const QChar RPN::PREFIX_FETCH = '!';
+
+/*
+ *
+ * 1 degree = pi/180 radians
+ * 1 radian = 180/pi degrees
+ *
+ */
 
 
 //******************************************************************************
 // RPN()
 //******************************************************************************
-RPN::RPN() {
+RPN::RPN(QMainWindow *mw) {
+    this->mw = mw;
     this->iEntry = 0;
     this->entry = "";
     this->ans = 0;
@@ -31,7 +44,8 @@ RPN::RPN() {
 //******************************************************************************
 // RPN()
 //******************************************************************************
-RPN::RPN(QString _entry) {
+RPN::RPN(QMainWindow *mw, QString _entry) {
+    this->mw = mw;
     this->iEntry = 0;
     this->entry = _entry.trimmed();
     this->ans = 0;
@@ -51,7 +65,14 @@ void RPN::setEntry(QString _entry) {
 //******************************************************************************
 // initFuncs()
 //******************************************************************************
-void RPN::initFuncs() {
+void RPN::initFuncs() {    
+    // initialize the random number generator with time-dependent seed
+    uint64_t timeSeed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::seed_seq ss{uint32_t(timeSeed & 0xffffffff), uint32_t(timeSeed>>32)};
+    rng.seed(ss);
+    // initialize a uniform distribution between 0 and 1
+    unif = std::uniform_real_distribution<double>(0, 1);
+
     myConstants = new Constants();
     funcs["+"] = &RPN::doPlus;
     funcs["-"] = &RPN::doMinus;
@@ -103,17 +124,28 @@ void RPN::initFuncs() {
     funcs["minute"] = &RPN::doMinute;
     funcs["second"] = &RPN::doSecond;
     funcs["prompt"] = &RPN::doAPrompt;
-    funcs["aprompt"] = &RPN::doAPrompt;
-    funcs["adup"] = &RPN::doADup;
-    funcs["adrop"] = &RPN::doADrop;
-    funcs["aswap"] = &RPN::doASwap;
-    funcs["aclear"] = &RPN::doAClear;
     funcs["alen"] = &RPN::doALen;
-    funcs["adepth"] = &RPN::doADepth;
     funcs["atime"] = &RPN::doATime;
     funcs["adate"] = &RPN::doADate;
     funcs["fix"] = &RPN::doFix;
     funcs["cls"] = &RPN::doCls;
+    funcs["list"] = &RPN::doList;
+    funcs["rcl"] = &RPN::doRcl;
+    funcs["sto"] = &RPN::doSto;
+    funcs["run"] = &RPN::doRun;
+    funcs["shell"] = &RPN::doShell;
+    /*
+    funcs["dms"] = &RPN:: doDms;
+    funcs["ddec"] = &RPN:: doDdec;
+    funcs["hms"] = &RPN:: doHms;
+    funcs["hdec"] = &RPN:: doHdec;
+    funcs["adms"] = &RPN:: doADms;
+    funcs["adec"] = &RPN:: doADdec;
+    funcs["ahms"] = &RPN:: doAHms;
+    funcs["ahdec"] = &RPN:: doAHdec;
+    funcs["d2r"] = &RPN:: doD2r;
+    funcs["r2d"] = &RPN:: doR2d;
+    */
 
     help["+"] = "Adds or combines two expressions ( a1 a2 -- a3 )";
     help["-"] = "Subtracts two values ( a1 a2 -- a3 )";
@@ -135,18 +167,18 @@ void RPN::initFuncs() {
     help["int"] = "Rounds a number down to the nearest integer ( a1 -- a2 )";
     help["frac"] = "Returns the fractional portion of a number ( a1 -- a2 )";
     help["abs"] = "Returns the absolute value of a numeric expression ( a1 -- a2 )";
+    help["pi"] = "Push the PI value on the stack ( -- PI )";
+    help["deg"] = "Set the angular mode as degrees ( -- )";
+    help["rad"] = "Set the angular mode as radians ( -- )";
+    help["log"] = "Returns the decimal logarithm of a number ( a1 -- a2 )";
+    help["10x"] = "Returns 10 raised to a power ( a1 -- a2 )";
+    help["dup"] = "Duplicates the value on the top of the stack ( a1 -- a1 a1 )";
+    help["swap"] = "Exchanges the two values on the top of the stack ( a1 a2 -- a2 a1 )";
+    help["drop"] = "Deletes the value on the top of the stack ( a1 -- )";
+    help["clear"] = "Deletes all the values of the stack ( a1 an -- )";
+    help["depth"] = "Returns the number of values of the stack ( -- a1 )";
 
     /*
-    help["pi"] = &RPN::doPI;
-    help["deg"] = &RPN::doDegrees;
-    help["rad"] = &RPN::doRadians;
-    help["log"] = &RPN::doLog;
-    help["10x"] = &RPN::doPower10;
-    help["dup"] = &RPN::doDup;
-    help["swap"] = &RPN::doSwap;
-    help["drop"] = &RPN::doDrop;
-    help["clear"] = &RPN::doClear;
-    help["depth"] = &RPN::doDepth;
     help["ans"] = &RPN::doAns;
     help["last"] = &RPN::doAns;
     help["?"] = &RPN::doAns;
@@ -177,6 +209,22 @@ void RPN::initFuncs() {
     help["atime"] = &RPN::doADepth;
     help["adate"] = &RPN::doADepth;
     help["fix"] = &RPN::doADepth;
+    help["cls"] = &RPN::doCls;
+    help["list"] = &RPN::doList;
+    help["rcl"] = &RPN::doList;
+    help["sto"] = &RPN::doList;
+    help["run"] = &RPN::doRun;
+    help["dms"] = &RPN:: doDms;
+    help["ddec"] = &RPN:: doDdec;
+    help["hms"] = &RPN:: doHms;
+    help["hdec"] = &RPN:: doHdec;
+    help["adms"] = &RPN:: doADms;
+    help["adec"] = &RPN:: doADdec;
+    help["ahms"] = &RPN:: doAHms;
+    help["ahdec"] = &RPN:: doAHdec;
+    help["d2r"] = &RPN:: doD2r;
+    help["r2d"] = &RPN:: doR2d;
+    help["shell"] = &RPN::doShell;
     */
 }
 
@@ -185,10 +233,22 @@ void RPN::initFuncs() {
 //******************************************************************************
 int RPN::doPlus(void) {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        dStack.push(a + b);
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            double b = stack.pop().toDouble();
+            double a = stack.pop().toDouble();
+            stack.push(a + b);
+        } else if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::STRING) {
+            double a = stack.pop().toDouble();
+            QString b = rawString(stack.pop());
+            stack.push(b + QString::number(a));
+        } else if (getTypeAt(stack, RPN::TOP_0) == RPN::STRING && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            QString a = rawString(stack.pop());
+            double b = stack.pop().toDouble();
+            stack.push(QString::number(b) + a);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -200,10 +260,14 @@ int RPN::doPlus(void) {
 //******************************************************************************
 int RPN::doMinus(void) {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        dStack.push(a - b);
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            double b = stack.pop().toDouble();
+            double a = stack.pop().toDouble();
+            stack.push(a - b);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -215,13 +279,17 @@ int RPN::doMinus(void) {
 //******************************************************************************
 int RPN::doDivide() {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        if (b != 0) {
-            dStack.push(a / b);
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            double b = stack.pop().toDouble();
+            double a = stack.pop().toDouble();
+            if (b != 0) {
+                stack.push(a / b);
+            } else {
+                RC = RC_ERR_DIVISION_BY_ZERO;
+            }
         } else {
-            RC = RC_ERR_DIVISION_BY_ZERO;
+            RC = RC_ERR_BAD_ARGUMENT;
         }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
@@ -234,10 +302,14 @@ int RPN::doDivide() {
 //******************************************************************************
 int RPN::doMultiply() {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        dStack.push(a * b);
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            double b = stack.pop().toDouble();
+            double a = stack.pop().toDouble();
+            stack.push(a * b);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -249,9 +321,17 @@ int RPN::doMultiply() {
 //******************************************************************************
 int RPN::doSinus() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(sin(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(sin(M_PI * a / 180.0));
+            } else {
+                stack.push(sin(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -263,9 +343,17 @@ int RPN::doSinus() {
 //******************************************************************************
 int RPN::doCosinus() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(cos(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(cos(M_PI * a / 180.0));
+            } else {
+                stack.push(cos(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -277,9 +365,17 @@ int RPN::doCosinus() {
 //******************************************************************************
 int RPN::doTangent() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(tan(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(tan(M_PI * a / 180.0));
+            } else {
+                stack.push(tan(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -291,9 +387,17 @@ int RPN::doTangent() {
 //******************************************************************************
 int RPN::doArcSinus() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(asin(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(asin(a) * 180.0 / M_PI);
+            } else {
+                stack.push(asin(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -305,9 +409,17 @@ int RPN::doArcSinus() {
 //******************************************************************************
 int RPN::doArcCosinus() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(acos(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(acos(a) * 180.0 / M_PI);
+            } else {
+                stack.push(acos(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -319,9 +431,17 @@ int RPN::doArcCosinus() {
 //******************************************************************************
 int RPN::doArcTangent() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(atan(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (angularMode == DEGREES) {
+                stack.push(atan(a) * 180.0 / M_PI);
+            } else {
+                stack.push(atan(a));
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -333,13 +453,13 @@ int RPN::doArcTangent() {
 //******************************************************************************
 int RPN::doPower() {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        if (b != 0) {
-            dStack.push(pow(a, b));
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER && getTypeAt(stack, RPN::TOP_1) == RPN::NUMBER) {
+            double b = stack.pop().toDouble();
+            double a = stack.pop().toDouble();
+            stack.push(pow(a, b));
         } else {
-            RC = RC_ERR_DIVISION_BY_ZERO;
+            RC = RC_ERR_BAD_ARGUMENT;
         }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
@@ -352,9 +472,13 @@ int RPN::doPower() {
 //******************************************************************************
 int RPN::doSquare() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(a * a);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(a * a);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -366,9 +490,13 @@ int RPN::doSquare() {
 //******************************************************************************
 int RPN::doSquareRoot() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(sqrt(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(sqrt(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -380,12 +508,16 @@ int RPN::doSquareRoot() {
 //******************************************************************************
 int RPN::doInverse() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        if (a != 0) {
-            dStack.push(1 / a);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (a != 0) {
+                stack.push(1 / a);
+            } else {
+                RC = RC_ERR_DIVISION_BY_ZERO;
+            }
         } else {
-            RC = RC_ERR_DIVISION_BY_ZERO;
+            RC = RC_ERR_BAD_ARGUMENT;
         }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
@@ -398,7 +530,7 @@ int RPN::doInverse() {
 //******************************************************************************
 int RPN::doRandom() {
     int RC = RC_OK;
-    dStack.push(fRand(0, 1));
+    stack.push(fRand(0, 1));
     return RC;
 }
 
@@ -407,35 +539,41 @@ int RPN::doRandom() {
 //******************************************************************************
 int RPN::doInteger() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(floor(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(floor(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doFractional()
 //******************************************************************************
 int RPN::doFractional() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(a - floor(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(a - floor(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doPI()
 //******************************************************************************
 int RPN::doPI() {
     int RC = RC_OK;
-    dStack.push(M_PI);
+    stack.push(M_PI);
     return RC;
 }
 
@@ -443,16 +581,17 @@ int RPN::doPI() {
 // doDegrees()
 //******************************************************************************
 int RPN::doDegrees() {
-    int RC = RC_OK;
+    int RC = RC_MODE;
+    this->angularMode = RPN::DEGREES;
     return RC;
-
 }
 
 //******************************************************************************
 // doRadians()
 //******************************************************************************
 int RPN::doRadians() {
-    int RC = RC_OK;
+    int RC = RC_MODE;
+    this->angularMode = RPN::RADIANS;
     return RC;
 }
 
@@ -461,82 +600,97 @@ int RPN::doRadians() {
 //******************************************************************************
 int RPN::doLogNeper() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(log(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(log(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doExponent()
 //******************************************************************************
 int RPN::doExponent() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(exp(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(exp(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doLog()
 //******************************************************************************
 int RPN::doLog() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(log10(a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(log10(a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doPower10()
 //******************************************************************************
 int RPN::doPower10() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(pow(10.0, a));
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(pow(10.0, a));
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doDup()
 //******************************************************************************
 int RPN::doDup() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(a);
-        dStack.push(a);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(a);
+            stack.push(a);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
+    return RC;}
 
 //******************************************************************************
 // doSwap()
 //******************************************************************************
 int RPN::doSwap() {
     int RC = RC_OK;
-    if (dStack.length() >= 2) {
-        double b = dStack.pop();
-        double a = dStack.pop();
-        dStack.push(b);
-        dStack.push(a);
+    if (isEnough(stack, 2)) {
+        QVariant b = stack.pop();
+        QVariant a = stack.pop();
+        stack.push(b);
+        stack.push(a);
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -548,8 +702,8 @@ int RPN::doSwap() {
 //******************************************************************************
 int RPN::doDrop() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        dStack.pop();
+    if (isEnough(stack, 1)) {
+        stack.pop();
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -561,8 +715,13 @@ int RPN::doDrop() {
 //******************************************************************************
 int RPN::doFix() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        this->FixNumber = dStack.pop();
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            this->FixNumber = a;
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -574,7 +733,7 @@ int RPN::doFix() {
 //******************************************************************************
 int RPN::doClear() {
     int RC = RC_OK;
-    dStack.clear();
+    stack.clear();
     return RC;
 }
 
@@ -583,7 +742,7 @@ int RPN::doClear() {
 //******************************************************************************
 int RPN::doDepth() {
     int RC = RC_OK;
-    dStack.push(dStack.length());
+    stack.push(stack.length());
     return RC;
 }
 
@@ -608,12 +767,16 @@ int RPN::doCls() {
 //******************************************************************************
 int RPN::doAbs() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        if (a >= 0.0) {
-            dStack.push(a);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (a >= 0.0) {
+                stack.push(a);
+            } else {
+                stack.push(-1.0 * a);
+            }
         } else {
-            dStack.push(-1.0 * a);
+            RC = RC_ERR_BAD_ARGUMENT;
         }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
@@ -626,9 +789,13 @@ int RPN::doAbs() {
 //******************************************************************************
 int RPN::doChs() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        dStack.push(-1.0 * a);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            stack.push(-1.0 * a);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
@@ -640,14 +807,18 @@ int RPN::doChs() {
 //******************************************************************************
 int RPN::doSign() {
     int RC = RC_OK;
-    if (dStack.length() >= 1) {
-        double a = dStack.pop();
-        if (a > 0.0) {
-            dStack.push(1.0);
-        } else if (a < 0.0) {
-            dStack.push(-1.0);
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NUMBER) {
+            double a = stack.pop().toDouble();
+            if (a > 0.0) {
+                stack.push(1.0);
+            } else if (a < 0.0) {
+                stack.push(-1.0);
+            } else {
+                stack.push(0.0);
+            }
         } else {
-            dStack.push(0.0);
+            RC = RC_ERR_BAD_ARGUMENT;
         }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
@@ -656,11 +827,47 @@ int RPN::doSign() {
 }
 
 //******************************************************************************
+// doList()
+//******************************************************************************
+int RPN:: doList() {
+    int RC= RC_ALPHA;
+    if (pStack.length() >= 1) {
+        this->alpha = "PROGRAM STACK :\n";
+        int i(0);
+        for (QStringList l : pStack) {
+            this->alpha = this->alpha + QString::number(i) + ": { " + l.join(" ") + " }\n";
+            i++;
+        }
+    } else {
+        RC = RC_ERR_PROGRAM_STACK_EMPTY;
+    }
+    return RC;
+}
+
+//******************************************************************************
 // fRand()
 //******************************************************************************
 double RPN::fRand(double fMin, double fMax) {
-    double f = (double)rand() / RAND_MAX;
+    double f = unif(rng);
     return fMin + f * (fMax - fMin);
+}
+
+//******************************************************************************
+// doShell()
+//******************************************************************************
+int RPN::doShell() {
+    int RC = RC_OK;
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::STRING) {
+            out = "$" + rawString(stack.pop().toString());
+            RC = RC_COMMAND;
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
+    } else {
+        RC = RC_ERR_TOO_FEW_ARGUMENTS;
+    }
+    return RC;
 }
 
 //******************************************************************************
@@ -668,14 +875,8 @@ double RPN::fRand(double fMin, double fMax) {
 //******************************************************************************
 int RPN::xeq() {
     int RC = RC_ERR_UNKNOWN_COMMAND;
-    // std::setprecision(std::numeric_limits<double>::digits10 + 1);
-    // std::setprecision(9);
-    // std::cout.setf(std::ios::fixed, std::ios::floatfield);
-    // std::cout.unsetf (std::ios::floatfield);
-    // std::cout.precision(10);
-
     if (entry.at(0) == RPN::PREFIX_COMMAND) {
-        // TODO : Execute command
+        out = entry;
         return RC_COMMAND;
     }
 
@@ -686,57 +887,120 @@ int RPN::xeq() {
 
     QStringList tokens;
     QStringList tmpList = entry.split(QRegExp("\""));
-    bool inside = false;
+    QStringList program;
+    bool inString(false);
+    bool inCode(false);
     tokens.clear();
     foreach (QString s, tmpList) {
-        if (inside) {
+        if (inString) {
             tokens.append("\""+ s + "\"");
         } else {
             tokens.append(s.split(QRegExp("\\s+")));
         }
-        inside = !inside;
+        inString = !inString;
     }
 
     for(auto& token : tokens) {
         if (token.length() > 0) {
-            qDebug().noquote() << token;
-            if (token.at(0) == "\"") {
-                if (token.at(token.length()-1) == "\"") {
-                    aStack.push(token.mid(1, token.length() - 2));
-                } else {
-                    aStack.push(token.mid(1, token.length() - 1));
-                }
+            if (token == "{") {
+                program.clear();
+                inCode = true;
+            } else if (token == "}") {
+                inCode = false;
+                // Do something with the stored code...
+                qDebug().noquote() << program;
+                stack.push(program);
                 RC = RC_OK;
             } else {
-                bool ok(false);
-                double d = token.toDouble(&ok);
-                if (ok) {
+                qDebug().noquote() << token;
+                if (token.at(0) == "\"") {                  // STRING
+                    if (token.at(token.length()-1) == "\"") {
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            stack.push(token);
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                        }
+                    } else {
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            stack.push(token + "\"");
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                        }
+                    }
                     RC = RC_OK;
-                    dStack.push(d);
-                    // qDebug("%f", d);
+                } else if (token.at(0) == "'") {            // NAME
+                    if (token.at(token.length()-1) == "'") {
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            stack.push(token);
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                        }
+                    } else {
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            stack.push(token + "'");
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                        }
+                    }
+                    RC = RC_OK;
+                } else if (token.at(0) == RPN::PREFIX_STORE) {
+
+                } else if (token.at(0) == RPN::PREFIX_FETCH) {
+
                 } else {
-                    if (funcs.contains(token)) {
-                        RC = (this->*funcs[token])();
+                    bool ok(false);
+                    double d = token.toDouble(&ok);
+                    if (ok) {
+                        RC = RC_OK;
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            stack.push(d);
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                        }
+                    } else {
+                        if (!inCode) {
+                            qDebug("NOT INCODE");
+                            if (funcs.contains(token)) {
+                                RC = (this->*funcs[token])();
+                            }
+                        } else {
+                            qDebug("INCODE");
+                            program.append(token);
+                            RC = RC_OK;
+                        }
                     }
                 }
             }
         }
     }
     if (RC == RC_OK) {
-        if (!dStack.isEmpty()) {
-            ans = dStack.top();
-            out = QString::number(ans, 'G', this->FixNumber);
+        if (!stack.isEmpty()) {
+            if (getTypeAt(stack, TOP_0) == RPN::CODE) {
+                ans = "{ " + stack.top().toStringList().join(" ") + " }";
+            } else {
+                ans = stack.top();
+            }
+            out = ans.toString();
         } else {
             out = "EMPTY STACK";
         }
     } else if (RC == RC_ANS) {
         RC = RC_OK;
-        out = QString::number(ans, 'G', this->FixNumber);
+        out = ans.toString();
     } else if (RC == RC_CLS) {
         RC = RC_CLS;
     } else if (RC == RC_PROMPT) {
-        RC = RC_OK;
-        out = aStack.top();
+        out = rawString(stack.pop());
     } else {
         switch (RC) {
             case RC_ERR_UNKNOWN_COMMAND:
@@ -760,6 +1024,7 @@ int RPN::xeq() {
             break;
         }
     }
+    qDebug() << stack;
     return RC;
 }
 
@@ -798,7 +1063,7 @@ QString RPN::getPrevious() {
 //******************************************************************************
 int RPN::doVersion() {
     int RC = RC_OK;
-    dStack.push(myConstants->getInt("NVERSION"));
+    stack.push(myConstants->getInt("NVERSION"));
     return RC;
 }
 
@@ -810,7 +1075,7 @@ int RPN::doTime() {
     int h = QTime::currentTime().hour();
     int m = QTime::currentTime().minute();
     int s = QTime::currentTime().second();
-    dStack.push(h + m / 100.0 + s / 10000.0);
+    stack.push(h + m / 100.0 + s / 10000.0);
     return RC;
 }
 
@@ -819,7 +1084,7 @@ int RPN::doTime() {
 //******************************************************************************
 int RPN::doDay() {
     int RC = RC_OK;
-    dStack.push(QDate::currentDate().day());
+    stack.push(QDate::currentDate().day());
     return RC;
 }
 
@@ -828,7 +1093,7 @@ int RPN::doDay() {
 //******************************************************************************
 int RPN::doMonth() {
     int RC = RC_OK;
-    dStack.push(QDate::currentDate().month());
+    stack.push(QDate::currentDate().month());
     return RC;
 }
 
@@ -837,7 +1102,7 @@ int RPN::doMonth() {
 //******************************************************************************
 int RPN::doYear() {
     int RC = RC_OK;
-    dStack.push(QDate::currentDate().year());
+    stack.push(QDate::currentDate().year());
     return RC;
 }
 
@@ -849,7 +1114,7 @@ int RPN::doDate() {
     int y = QDate::currentDate().year();
     int m = QDate::currentDate().month();
     int d = QDate::currentDate().day();
-    dStack.push(y + m / 100.0 + d / 10000.0);
+    stack.push(y + m / 100.0 + d / 10000.0);
     return RC;
 }
 
@@ -858,7 +1123,7 @@ int RPN::doDate() {
 //******************************************************************************
 int RPN::doHour() {
     int RC = RC_OK;
-    dStack.push(QTime::currentTime().hour());
+    stack.push(QTime::currentTime().hour());
     return RC;
 }
 
@@ -867,7 +1132,7 @@ int RPN::doHour() {
 //******************************************************************************
 int RPN::doMinute() {
     int RC = RC_OK;
-    dStack.push(QTime::currentTime().minute());
+    stack.push(QTime::currentTime().minute());
     return RC;
 }
 
@@ -876,7 +1141,7 @@ int RPN::doMinute() {
 //******************************************************************************
 int RPN::doSecond() {
     int RC = RC_OK;
-    dStack.push(QTime::currentTime().second());
+    stack.push(QTime::currentTime().second());
     return RC;
 }
 
@@ -909,61 +1174,15 @@ int RPN::doShutdown() {
 //******************************************************************************
 int RPN::doAPrompt() {
     int RC = RC_OK;
-    if (aStack.length() >= 1) {
-        RC = RC_PROMPT;
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::STRING) {
+            RC = RC_PROMPT;
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
-
-//******************************************************************************
-// doADrop()
-//******************************************************************************
-int RPN::doADrop() {
-    int RC = RC_OK;
-    if (aStack.length() >= 1) {
-        aStack.pop();
-    } else {
-        RC = RC_ERR_TOO_FEW_ARGUMENTS;
-    }    return RC;
-}
-
-//******************************************************************************
-// doADup()
-//******************************************************************************
-int RPN::doADup() {
-    int RC = RC_OK;
-    if (aStack.length() >= 1) {
-        QString a = aStack.pop();
-        aStack.push(a);
-        aStack.push(a);
-    } else {
-        RC = RC_ERR_TOO_FEW_ARGUMENTS;
-    }    return RC;
-}
-
-//******************************************************************************
-// doASwap()
-//******************************************************************************
-int RPN::doASwap() {
-    int RC = RC_OK;
-    if (aStack.length() >= 2) {
-        QString b = aStack.pop();
-        QString a = aStack.pop();
-        aStack.push(b);
-        aStack.push(a);
-    } else {
-        RC = RC_ERR_TOO_FEW_ARGUMENTS;
-    }    return RC;
-}
-
-//******************************************************************************
-// doAClear()
-//******************************************************************************
-int RPN::doAClear() {
-    int RC = RC_OK;
-    aStack.clear();
     return RC;
 }
 
@@ -972,20 +1191,15 @@ int RPN::doAClear() {
 //******************************************************************************
 int RPN::doALen() {
     int RC = RC_OK;
-    if (aStack.length() >= 1) {
-        dStack.push(aStack.top().length());
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::STRING) {
+            stack.push(rawString(stack.top().toString()).length());
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
     } else {
         RC = RC_ERR_TOO_FEW_ARGUMENTS;
     }
-    return RC;
-}
-
-//******************************************************************************
-// doADepth()
-//******************************************************************************
-int RPN::doADepth() {
-    int RC = RC_OK;
-    dStack.push(aStack.length());
     return RC;
 }
 
@@ -995,7 +1209,7 @@ int RPN::doADepth() {
 int RPN::doATime() {
     int RC = RC_OK;
     QString t = QDateTime::currentDateTime().toString("HH:mm:ss");
-    aStack.push(t);
+    stack.push("\""+ t + "\"");
     return RC;
 }
 
@@ -1005,7 +1219,105 @@ int RPN::doATime() {
 int RPN::doADate() {
     int RC = RC_OK;
     QString d = QDateTime::currentDateTime().toString("dd/MM/yyyy");
-    aStack.push(d);
+    stack.push("\"" + d + "\"");
+    return RC;
+}
+
+//******************************************************************************
+// doRcl()
+//******************************************************************************
+int RPN::doRcl() {
+    int RC = RC_OK;
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NAME) {
+            QString name = rawString(stack.pop());
+            stack.push(vars[name]);
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
+    } else {
+        RC = RC_ERR_TOO_FEW_ARGUMENTS;
+    }
+    return RC;
+}
+
+//******************************************************************************
+// doRcl()
+//******************************************************************************
+int RPN::doSto() {
+    int RC = RC_OK;
+    if (isEnough(stack, 2)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NAME) {
+            QString name = rawString(stack.pop());
+            QVariant a = stack.pop();
+            vars[name] = a;
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
+    } else {
+        RC = RC_ERR_TOO_FEW_ARGUMENTS;
+    }
+    return RC;
+}
+
+//******************************************************************************
+// doRun()
+//******************************************************************************
+int RPN::doRun() {
+    int RC = RC_OK;
+    if (isEnough(stack, 1)) {
+        if (getTypeAt(stack, RPN::TOP_0) == RPN::NAME) {
+            QString name = rawString(stack.pop());
+            stack.push(vars[name]);
+            if (getTypeAt(stack, RPN::TOP_0) == RPN::CODE) {
+                QStringList pgm = stack.pop().toStringList();
+                for (QString inst : pgm) {
+                    qDebug() << "RUN_PGM";
+                    setEntry(inst);
+                    xeq();
+                    // lw->displayOutput(inst, out);
+                    /*
+                    int rc = rpn->xeq();
+                    if (rc == RPN::RC_OK) {
+                        displayOutput(cmd, rpn->out);
+                    } else if (rc == RPN::RC_CLS) {
+                        mMainWindow->ui->txtConsole->setText("");
+                        showMessage("Console cleared");
+                    } else if (rc == RPN::RC_MODE) {
+                        lblAngularMode->setText((rpn->angularMode==RPN::DEGREES) ? "DEG" : "RAD");
+                        displayOutput(cmd, rpn->out);
+                        // TODO : Display stack
+                    } else if (rc == RPN::RC_LOCK) {
+                        slotLock();
+                    } else if (rc == RPN::RC_EXIT) {
+                        slotClosed();
+                    } else if (rc == RPN::RC_SHUTDOWN) {
+                        slotOff();
+                    } else if (rc == RPN::RC_ALPHA) {
+                        displayOutput(cmd, rpn->alpha);
+                    } else if (rc == RPN::RC_ALIAS) {
+                        // TODO : Display ALIAS result
+                    } else if (rc == RPN::RC_COMMAND) {
+                        runCommand("./", rpn->out.mid(1), mMainWindow->ui->txtConsole);
+                    } else if (rc == RPN::RC_PROMPT) {
+                        lblPrompt->setText(rpn->out + " : ");
+                        displayStack(rpn->stack);
+                        displayVars(rpn->vars);
+                        lblDepthStack->setText(QString::number(rpn->stack.length()));
+                    } else {
+                        displayOutput(cmd, rpn->error);
+                    }
+                    */
+                }
+            } else {
+                stack.pop();
+            }
+        } else {
+            RC = RC_ERR_BAD_ARGUMENT;
+        }
+    } else {
+        RC = RC_ERR_TOO_FEW_ARGUMENTS;
+    }
     return RC;
 }
 
@@ -1139,4 +1451,80 @@ int RPN::doScratchName() {
     QString d = QDateTime::currentDateTime().toString("dd/MM/yyyy");
     aStack.push(d);
     return RC;
+}
+
+//******************************************************************************
+// deg2rad()
+//******************************************************************************
+double RPN::deg2rad(double a) {
+    return (a * 180.0 / M_PI);
+}
+
+//******************************************************************************
+// rad2deg()
+//******************************************************************************
+double RPN::rad2deg(double a) {
+    return (a * M_PI / 180.0);
+}
+
+//******************************************************************************
+// isEnough()
+//******************************************************************************
+bool RPN::isEnough(const QStack<QVariant> &s, int i) {
+    return (s.length() >= i);
+}
+
+//******************************************************************************
+// rawString()
+//******************************************************************************
+QString RPN::rawString(const QVariant v) {
+    QString s = v.toString();
+    if (s.at(0) == "\"" || s.at(0) == "'") {
+        s = s.mid(1);
+    }
+    if (s.at(s.length() - 1) == "\"" || s.at(s.length() - 1) == "'") {
+        s = s.mid(0, s.length() - 1);
+    }
+    return s;
+}
+
+//******************************************************************************
+// getTypeAt()
+//******************************************************************************
+RPN::TypeStack RPN::getTypeAt(const QStack<QVariant> &s, AtStack i) {
+    int TOP = s.length() - 1;
+    QVariant item;
+    switch (i) {
+    case TOP_0:
+        item = s.at(TOP);
+        break;
+    case TOP_1:
+        item = s.at(TOP - 1);
+        break;
+    case TOP_2:
+        item = s.at(TOP - 2);
+        break;
+    }
+
+    switch (item.userType()) {
+        case QMetaType::Int:
+        case QMetaType::UInt:
+        case QMetaType::LongLong:
+        case QMetaType::ULongLong:
+        case QMetaType::Double:
+        case QMetaType::Float:
+            return RPN::NUMBER;
+
+        case QMetaType::QString:
+            if (item.toString().at(0) == "\"")
+                return RPN::STRING;
+            else
+                return RPN::NAME;
+
+        case QMetaType::QStringList:
+            return RPN::CODE;
+
+        default:
+            return RPN::STRING;
+    }
 }
